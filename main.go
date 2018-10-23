@@ -38,7 +38,7 @@ func main() {
 	addr := ":9371"
 	path := "/metrics"
 	flag.StringVar(&path, "path", path, "metrics endpoint path")
-	flag.StringVar(&addr, "addr", path, "TCP address to listen on")
+	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
 	flag.Parse()
 
 	reg := prometheus.NewRegistry()
