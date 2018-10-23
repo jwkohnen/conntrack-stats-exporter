@@ -1,6 +1,9 @@
 FROM	golang:1.11 as build
 WORKDIR /conntrack-stats-exporter
+COPY	go.mod go.sum ./
+RUN	go mod download
 COPY	. .
+RUN	go mod verify
 RUN	./build.sh
 
 FROM	debian:stretch-slim
