@@ -1,0 +1,26 @@
+image:
+  repository: traumfewo/conntrack-stats-exporter
+  tag: v0.2.0
+  pullPolicy: IfNotPresent
+
+scrape: true
+port: 9371
+
+tolerations:
+  # catch-all toleration
+  - operator: Exists
+
+resources:
+  requests:
+    cpu: 1m
+    memory: 8Mi
+  limits:
+    cpu: 20m
+    memory: 15Mi
+
+nameOverride: ""
+fullnameOverride: ""
+
+nodeSelector: {}
+
+affinity: {}

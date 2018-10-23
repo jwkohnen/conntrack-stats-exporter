@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: conntrack-stats-exporter
+  labels:
+    app: conntrack-stats-exporter
+spec:
+  selector:
+    matchLabels:
+      app: conntrack-stats-exporter
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: "100%"
+  template:
+    metadata:
+      name: conntrack-stats-exporter
+      labels:
+        app: conntrack-stats-exporter
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9371'
+    spec:
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: conntrack-stats-exporter
+        image: traumfewo/conntrack-stats-exporter:latest
+        imagePullPolicy: Always
+        ports:
+        - name: metrics
+          containerPort: 9371
+          hostPort: 9371
+          protocol: TCP
+        securityContext:
+          privileged: true
+        terminationMessagePolicy: FallbackToLogsOnError
+        resources:
+          requests:
+            cpu: 1m
+            memory: 8Mi
+          limits:
+            cpu: 10m
+            memory: 15Mi
