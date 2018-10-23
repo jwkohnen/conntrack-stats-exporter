@@ -42,6 +42,9 @@ spec:
       - name: {{ .Chart.Name }}
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- with .Values.port }}
+        args: [ "--addr=:{{ . }}" ]
+        {{- end }}
         ports:
         - name: metrics
           containerPort: {{ .Values.port }}
