@@ -6,10 +6,8 @@ COPY	. .
 RUN	go mod verify
 RUN	./build.sh
 
-FROM	debian:stretch-slim
+FROM	alpine:3.10
 COPY	--from=build /conntrack-stats-exporter/conntrack-stats-exporter /usr/local/sbin/
-RUN	apt-get update \
-&&	apt-get install -y conntrack \
-&&	apt-get clean \
-&&	rm -rf /var/lib/apt/lists/*
+RUN     apk update && apk --no-cache upgrade && \
+        apk --no-cache add conntrack-tools
 ENTRYPOINT [ "/usr/local/sbin/conntrack-stats-exporter" ]

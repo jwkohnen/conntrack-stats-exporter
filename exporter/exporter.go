@@ -43,6 +43,7 @@ var metricNames = []string{
 	"early_drop",
 	"error",
 	"search_restart",
+	"count",
 }
 
 // Exporter exports stats from the conntrack CLI. The metrics are named with
@@ -100,7 +101,6 @@ type metricsPerCPU []map[string]int
 
 func getMetrics() metricsPerCPU {
 	lines := callConntrackTool()
-
 	metrics := make(metricsPerCPU, len(lines))
 ParseEachOutputLine:
 	for _, line := range lines {
@@ -127,6 +127,19 @@ ParseEachOutputLine:
 	return metrics
 }
 
+func getGeneralCounter(cpu int) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3e9)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "conntrack", "--count")
+	out, err := cmd.Output()
+	if err != nil {
+		panic(err)
+	}
+
+	return fmt.Sprintf("cpu=%d count=%s", cpu, out)
+}
+
 func callConntrackTool() []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3e9)
 	defer cancel()
@@ -144,6 +157,8 @@ func callConntrackTool() []string {
 	if scanner.Err() != nil {
 		panic(err)
 	}
+	total := getGeneralCounter(len(lines))
+	lines = append(lines, total)
 	return lines
 }
 

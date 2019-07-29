@@ -3,4 +3,4 @@ set -eux
 
 go mod verify 
 go test ./...
-go build --ldflags="-X pkg.version=$(git describe --dirty)"
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build --ldflags="-X pkg.version=$(git describe --dirty)"
