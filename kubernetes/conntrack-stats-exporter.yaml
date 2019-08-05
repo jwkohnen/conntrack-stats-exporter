@@ -26,7 +26,7 @@ spec:
       - operator: Exists
       containers:
       - name: conntrack-stats-exporter
-        image: traumfewo/conntrack-stats-exporter:latest
+        image: jwkohnen/conntrack-stats-exporter:latest
         imagePullPolicy: Always
         ports:
         - name: metrics
