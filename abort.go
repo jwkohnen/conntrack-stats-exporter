@@ -52,15 +52,15 @@ func newAbortHandler(next http.Handler) http.Handler {
 func abort(err interface{}) {
 	const size = 2 << 10
 
-	buf := bytes.NewBuffer(make ([]byte, 0, 2*size))
+	buf := bytes.NewBuffer(make([]byte, 0, 2*size))
 
-	fmt.Fprintf(buf, "ERROR: %v\n\n", err)
+	_, _ = fmt.Fprintf(buf, "ERROR: %v\n\n", err)
 
 	stack := make([]byte, size)
 	stack = stack[:runtime.Stack(stack, false)] // https://i.imgur.com/hb2a9kI.jpg
-	buf.Write(stack)
+	_, _ = buf.Write(stack)
 
-	os.Stderr.Write(buf.Next(size))
+	_, _ = os.Stderr.Write(buf.Next(size))
 
 	os.Exit(1)
 }
