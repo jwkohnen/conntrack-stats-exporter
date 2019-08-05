@@ -1,6 +1,6 @@
 image:
   repository: jwkohnen/conntrack-stats-exporter
-  tag: v0.2.1
+  tag: v0.2.2
   pullPolicy: IfNotPresent
 
 scrape: true
