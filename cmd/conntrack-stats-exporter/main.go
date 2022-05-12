@@ -33,7 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/jwkohnen/conntrack-stats-exporter/exporter"
+	"github.com/jwkohnen/conntrack-stats-exporter/lib/exporter"
 )
 
 func main() {
