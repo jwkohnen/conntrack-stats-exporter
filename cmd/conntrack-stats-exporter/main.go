@@ -21,9 +21,11 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/jwkohnen/conntrack-stats-exporter/lib/exporter"
 )
@@ -37,12 +39,14 @@ func main() {
 
 	addr := ":9371"
 	path := "/metrics"
+	netns := ""
 	flag.StringVar(&path, "path", path, "metrics endpoint path")
 	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
+	flag.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
 	flag.Parse()
 
 	reg := prometheus.NewRegistry()
-	reg.MustRegister(exporter.New())
+	reg.MustRegister(exporter.New(strings.Split(netns, ",")))
 
 	mux := http.NewServeMux()
 	mux.Handle(
@@ -58,6 +62,7 @@ func main() {
 		ReadTimeout:  3e9,
 		WriteTimeout: 3e9,
 	}
+	log.Infof("Listening for %s on %s", path, addr)
 	err := srv.ListenAndServe()
 	if err != nil {
 		abort(err)
