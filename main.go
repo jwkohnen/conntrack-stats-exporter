@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -50,8 +51,10 @@ func main() {
 
 	addr := ":9371"
 	path := "/metrics"
+	netns := ""
 	flag.StringVar(&path, "path", path, "metrics endpoint path")
 	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
+	flag.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
 	flag.Parse()
 
 	mux := http.NewServeMux()
@@ -60,6 +63,7 @@ func main() {
 		newAbortHandler(
 			exporter.Handler(
 				exporter.WithErrorLogWriter(os.Stderr),
+				exporter.WithNetNs(strings.Split(netns, ",")),
 			),
 		),
 	)

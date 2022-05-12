@@ -33,7 +33,7 @@ func TestMetrics(t *testing.T) {
 	mockConntrackTool(t)
 
 	recorder := httptest.NewRecorder()
-	exporter.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	exporter.Handler(exporter.WithNetNs([]string{""})).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
 
 	resp := recorder.Result()
 
@@ -77,7 +77,6 @@ func TestMetrics(t *testing.T) {
 					metricName, metricName, metricName,
 				),
 			)
-
 			if !regex.Match(body) {
 				t.Errorf("expected to find HELP header, TYPE header and metric for %s, but didn't", metricName)
 			}
