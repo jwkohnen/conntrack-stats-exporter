@@ -1,13 +1,14 @@
-FROM	golang:1.17.0 as build
+FROM golang:1.18.0 as build
 WORKDIR /conntrack-stats-exporter
-COPY	go.mod go.sum ./
+COPY go.mod go.sum ./
 RUN	go mod download
-COPY	. .
+COPY . .
 RUN	go mod verify
 RUN	./build.sh
 
-FROM	alpine:3.14.1
-COPY	--from=build /conntrack-stats-exporter/conntrack-stats-exporter /usr/local/sbin/
-RUN	apk update && apk --no-cache upgrade && \
+FROM alpine:3.15.4
+COPY --from=build /conntrack-stats-exporter/conntrack-stats-exporter /usr/local/sbin/
+RUN	apk update && \
+	apk --no-cache upgrade && \
 	apk --no-cache add conntrack-tools
 ENTRYPOINT	[ "/usr/local/sbin/conntrack-stats-exporter" ]
