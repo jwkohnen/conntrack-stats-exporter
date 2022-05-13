@@ -32,6 +32,12 @@ func execInNetns(name string, fn func() error) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err := ns.Close()
+		if err != nil {
+			log.Error("exec_in_ns: failed to close fd: %w", err)
+		}
+	}()
 
 	if ns > 0 {
 		runtime.LockOSThread()
