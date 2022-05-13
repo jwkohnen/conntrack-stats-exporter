@@ -129,6 +129,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 func getMetrics(netns string) (metricList, error) {
 	var lines []string
+	var total string
 	var err error
 	err = execInNetns(netns, func() error {
 		lines, err = getConntrackStats()
@@ -137,9 +138,12 @@ func getMetrics(netns string) (metricList, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conntrack stats: %s", err)
 	}
-	total, err := getConntrackCounter()
+	err = execInNetns(netns, func() error {
+		total, err = getConntrackCounter()
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get conntrack stats: %s", err)
+		return nil, fmt.Errorf("failed to get conntrack counter: %s", err)
 	}
 	lines = append(lines, total)
 	metrics := make(metricList, len(lines))
