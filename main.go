@@ -17,10 +17,18 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"runtime"
 	"runtime/debug"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -29,6 +37,14 @@ import (
 )
 
 func main() {
+	// Set Go max procs to 1 even if number of (logical) CPUs is > 1.  This is a low performance program that might run
+	// in an environment with very limited CPU resources via cgroups (e.g. Kubernetes resource limit).  GOMAXPROCS of 1
+	// prevents the Go scheduler from using too much scheduler overhead in such environments.
+	//
+	// Usually I'd use go.uber.org/automaxprocs/maxprocs, but hard coding 1 is a better solution than having another
+	// dependency.
+	_ = runtime.GOMAXPROCS(1)
+
 	if os.Getenv("GOGC") == "" {
 		// Reduce memory overhead. This is a low performance program;
 		// the CPU penalty is negligible.
@@ -58,8 +74,41 @@ func main() {
 		ReadTimeout:  3e9,
 		WriteTimeout: 3e9,
 	}
+
+	shutdown := make(chan os.Signal, 1)
+
+	var receivedSignal os.Signal
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		// Sadly Kubernetes sends SIGTERM, not SIGINT.  CTRL+C on a TTY sends SIGINT.
+		signal.Notify(shutdown, os.Interrupt)
+		signal.Notify(shutdown, syscall.SIGTERM)
+
+		receivedSignal = <-shutdown
+
+		signal.Stop(shutdown)
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			abort(fmt.Errorf("error shutting down server: %w", err))
+		}
+	}()
+
 	err := srv.ListenAndServe()
-	if err != nil {
+	wg.Wait()
+
+	if errors.Is(err, http.ErrServerClosed) {
+		os.Exit(128 + int(receivedSignal.(syscall.Signal)))
+	}
+
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		abort(err)
 	}
 }
