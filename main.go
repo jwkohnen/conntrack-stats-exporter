@@ -30,9 +30,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/jwkohnen/conntrack-stats-exporter/exporter"
 )
 
@@ -57,17 +54,8 @@ func main() {
 	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
 	flag.Parse()
 
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(exporter.New())
-
 	mux := http.NewServeMux()
-	mux.Handle(
-		path,
-		newAbortHandler(
-			promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
-		),
-	)
-
+	mux.Handle(path, newAbortHandler(exporter.Handler()))
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,

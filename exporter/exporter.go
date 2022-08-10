@@ -21,11 +21,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os/exec"
 	"regexp"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -46,15 +48,39 @@ var metricNames = []string{
 	"count",
 }
 
-// Exporter exports stats from the conntrack CLI. The metrics are named with
+type Option func(opts *options)
+
+/*
+func WithXXXX(xxx any) Option {
+	return func(opts *options) { opts.XXX = xxx }
+}
+*/
+
+func Handler(opts ...Option) http.Handler {
+	cfg := &options{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(newExporter(cfg))
+
+	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
+}
+
+type options struct {
+	// XXX any
+}
+
+// exporter exports stats from the conntrack CLI. The metrics are named with
 // prefix `conntrack_stats_*`.
-type Exporter struct {
+type exporter struct {
 	descriptors map[string]*prometheus.Desc
 }
 
-// New creates a new conntrack stats exporter.
-func New() *Exporter {
-	e := &Exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames))}
+// newExporter creates a newExporter conntrack stats exporter.
+func newExporter(_ *options) *exporter {
+	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames))}
 	for _, mn := range metricNames {
 		e.descriptors[mn] = prometheus.NewDesc(
 			prometheus.BuildFQName(promNamespace, promSubSystem, mn),
@@ -68,14 +94,14 @@ func New() *Exporter {
 
 // Describe implements the describe method of the prometheus.Collector
 // interface.
-func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
+func (e *exporter) Describe(ch chan<- *prometheus.Desc) {
 	for _, g := range e.descriptors {
 		ch <- g
 	}
 }
 
 // Collect implements the collect method of the prometheus.Collector interface.
-func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 	metrics := getMetrics()
 	for metricName, desc := range e.descriptors {
 		for _, metricPerCPU := range metrics {
