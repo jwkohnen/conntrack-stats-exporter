@@ -65,7 +65,7 @@ func Handler(opts ...Option) http.Handler {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(newExporter(cfg))
 
-	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
+	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 
 type options struct {
