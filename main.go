@@ -55,7 +55,15 @@ func main() {
 	flag.Parse()
 
 	mux := http.NewServeMux()
-	mux.Handle(path, newAbortHandler(exporter.Handler()))
+	mux.Handle(
+		path,
+		newAbortHandler(
+			exporter.Handler(
+				exporter.WithErrorLogWriter(os.Stderr),
+			),
+		),
+	)
+
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
@@ -89,6 +97,7 @@ func main() {
 		}
 	}()
 
+	_, _ = fmt.Fprintf(os.Stderr, "listening on %s with endpint %q\n", addr, path)
 	err := srv.ListenAndServe()
 	wg.Wait()
 
