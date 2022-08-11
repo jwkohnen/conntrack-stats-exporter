@@ -97,7 +97,7 @@ func main() {
 		}
 	}()
 
-	_, _ = fmt.Fprintf(os.Stderr, "listening on %s with endpint %q\n", addr, path)
+	_, _ = fmt.Fprintf(os.Stderr, "listening on %s with endpoint %q\n", addr, path)
 	err := srv.ListenAndServe()
 	wg.Wait()
 
