@@ -105,7 +105,7 @@ func main() {
 		os.Exit(128 + int(receivedSignal.(syscall.Signal)))
 	}
 
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err != nil {
 		abort(err)
 	}
 }
