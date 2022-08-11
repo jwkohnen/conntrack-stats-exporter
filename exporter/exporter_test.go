@@ -11,14 +11,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/jwkohnen/conntrack-stats-exporter/exporter"
 )
-
-//go:embed conntrack_mock.sh
-var conntrackMockScript string
 
 func TestConntrackMock(t *testing.T) {
 	mockConntrackTool(t)
@@ -37,7 +33,7 @@ func TestMetrics(t *testing.T) {
 	mockConntrackTool(t)
 
 	recorder := httptest.NewRecorder()
-	exporter.Handler().ServeHTTP(recorder, httptest.NewRequest("GET", "/", http.NoBody))
+	exporter.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
 
 	resp := recorder.Result()
 
@@ -50,8 +46,12 @@ func TestMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	for metricName, cpuValues := range map[string][4]int{
-		// not checking "conntrack_stats_count" here, because is has a CPU label by accident and that is subject to change
+		// not checking "conntrack_stats_count" here, because it has a CPU label by accident and that is subject to change
 		"conntrack_stats_drop":           {3, 8, 13, 0},
 		"conntrack_stats_early_drop":     {4, 9, 14, 0},
 		"conntrack_stats_error":          {5, 10, 2, 0},
@@ -61,12 +61,17 @@ func TestMetrics(t *testing.T) {
 		"conntrack_stats_invalid":        {11258, 10298, 17439, 12065},
 		"conntrack_stats_search_restart": {76531, 64577, 75364, 66740},
 	} {
+		metricName, cpuValues := metricName, cpuValues
+
 		t.Run("Header+Type+Metric: "+metricName, func(t *testing.T) {
+			t.Parallel()
+
 			// Apologies for using regex! As a reminder (?m) enables multi-line mode.  This regex is supposed to make
 			// sure the metric is prepended by a HELP as well as a TYPE header and that each type is `counter`.
 			regex := regexp.MustCompile(
 				fmt.Sprintf(
-					`(?m)^# HELP %s.*?\n`+
+					`(?m)`+
+						`^# HELP %s.*?\n`+
 						`^# TYPE %s counter\n`+
 						`^%s\{`,
 					metricName, metricName, metricName,
@@ -79,10 +84,14 @@ func TestMetrics(t *testing.T) {
 		})
 
 		for cpu, cpuValue := range cpuValues {
+			cpu, cpuValue := cpu, cpuValue
+
 			t.Run(fmt.Sprintf("%s{cpu=%d}", metricName, cpu), func(t *testing.T) {
+				t.Parallel()
+
 				// Again, apologies for using regex.  This regex is supposed to match the metric line for a given CPU
 				// and its value.  The group should match a metric with only cpu label, any label prepending the cpu
-				// label well as any label following the cpu label.  If adding any label to the metric, this regex
+				// label as well as any label following the cpu label.  If adding any label to the metric, this regex
 				// should match or this is a bug!
 				regex := regexp.MustCompile(fmt.Sprintf(`(?m)^%s\{(?:[^{}]+?,|)cpu="%d".*\} %d$`,
 					metricName, cpu, cpuValue,
@@ -96,8 +105,10 @@ func TestMetrics(t *testing.T) {
 	}
 
 	t.Run("conntrack_stats_count", func(t *testing.T) {
+		t.Parallel()
+
 		// A regex again, but this one is not too bad, or is it?
-		regex := regexp.MustCompile(`(?m)^conntrack_stats_count\{.* 434$`)
+		regex := regexp.MustCompile(`(?m)^conntrack_stats_count({.+?}|) 434$`)
 
 		if !regex.Match(body) {
 			t.Errorf("expected to find conntrack_stats_count, but didn't")
@@ -106,24 +117,20 @@ func TestMetrics(t *testing.T) {
 }
 
 func mockConntrackTool(t *testing.T) {
+	t.Helper()
+
+	if len(conntrackMockScript) == 0 {
+		t.Fatal("conntrackMockScript is empty")
+	}
+
 	dir := t.TempDir()
 
-	fd, err := os.Create(filepath.Join(dir, "conntrack"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := io.Copy(fd, strings.NewReader(conntrackMockScript)); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := fd.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Chmod(filepath.Join(dir, "conntrack"), 0755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "conntrack"), conntrackMockScript, 0755); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 }
+
+//go:embed conntrack_mock.sh
+var conntrackMockScript []byte

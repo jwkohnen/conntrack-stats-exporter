@@ -56,7 +56,7 @@ func WithErrorLogWriter(w io.Writer) Option {
 }
 
 func Handler(opts ...Option) http.Handler {
-	cfg := &options{}
+	cfg := new(options)
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -117,6 +117,7 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 
 		panic(err)
 	}
+
 	for metricName, desc := range e.descriptors {
 		for _, metricPerCPU := range metrics {
 			cpu, ok := metricPerCPU["cpu"]
@@ -129,6 +130,7 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 
 				panic(err)
 			}
+
 			metricValue, ok := metricPerCPU[metricName]
 			if !ok {
 				continue
@@ -150,6 +152,7 @@ func (e *exporter) getMetrics() (metricsPerCPU, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error running the conntrack command: %w", err)
 	}
+
 	metrics := make(metricsPerCPU, len(lines))
 ParseEachOutputLine:
 	for _, line := range lines {
@@ -182,6 +185,7 @@ func (e *exporter) getGeneralCounter(cpu int) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "conntrack", "--count")
+
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("error running the conntrack command with the --count flag: %w", err)
@@ -195,12 +199,14 @@ func (e *exporter) callConntrackTool() ([]string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "conntrack", "--stats")
+
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("error running the conntrack command with the --stats flag: %w", err)
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(out))
+
 	var lines []string
 
 	for scanner.Scan() {
