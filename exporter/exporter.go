@@ -89,7 +89,7 @@ type exporter struct {
 	netnsList      []string
 }
 
-// New creates a new conntrack stats exporter.
+// newExporter creates a newExporter conntrack stats exporter
 func newExporter(ops *options) *exporter {
 	scrapeError := make(map[string]int, len(ops.netnsList))
 	for _, netns := range ops.netnsList {
