@@ -133,8 +133,8 @@ func TestScrapeError(t *testing.T) {
 	wg.Add(preload)
 	for i := 0; i < preload; i++ {
 		go func() {
+			defer wg.Done()
 			handler.ServeHTTP(new(nilResponseWriter), request)
-			wg.Done()
 		}()
 	}
 	wg.Wait()
