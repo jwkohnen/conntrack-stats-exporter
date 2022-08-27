@@ -17,25 +17,26 @@
 package exporter
 
 import (
+	"fmt"
+	"io"
 	"runtime"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netns"
 )
 
-func execInNetns(name string, fn func() error) error {
+func execInNetns(name string, errWriter io.Writer, fn func() error) error {
 	if name == "" {
 		return fn()
 	}
 
 	ns, err := netns.GetFromName(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open target netns %q: %v", name, err)
 	}
 	defer func() {
 		err := ns.Close()
-		if err != nil {
-			log.Error("exec_in_ns: failed to close fd: %w", err)
+		if err != nil && errWriter != nil {
+			_, _ = fmt.Fprintln(errWriter, "exec_in_ns: failed to close fd:", err)
 		}
 	}()
 
@@ -43,24 +44,24 @@ func execInNetns(name string, fn func() error) error {
 		runtime.LockOSThread()
 		current, err := netns.Get()
 		if err != nil {
-			return err
+			return fmt.Errorf("exec_in_ns: failed to open current netns: %w", err)
 		}
 
 		defer func() {
 			err := netns.Set(current)
 			if err != nil {
-				log.Error("exec_in_ns: failed to restore netns: %w", err)
+				_, _ = fmt.Fprintln(errWriter, "exec_in_ns: failed to restore netns:", err)
 			}
 			runtime.UnlockOSThread()
 			err = current.Close()
 			if err != nil {
-				log.Error("exec_in_ns: failed to close fd: %w", err)
+				_, _ = fmt.Fprintln(errWriter, "exec_in_ns: failed to close fd:", err)
 			}
 		}()
 
 		err = netns.Set(ns)
 		if err != nil {
-			return err
+			return fmt.Errorf("exec_in_ns: failed to restore netns: %w", err)
 		}
 	}
 

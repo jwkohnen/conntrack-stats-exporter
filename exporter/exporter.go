@@ -57,7 +57,7 @@ type Option func(cfg *config)
 type metricList []map[string]uint64
 
 func WithErrorLogWriter(w io.Writer) Option {
-	return func(opts *config) { opts.errorLogWriter = w }
+	return func(opts *config) { opts.errWriter = w }
 }
 
 func WithNetNs(netnsList []string) Option {
@@ -66,8 +66,8 @@ func WithNetNs(netnsList []string) Option {
 
 func Handler(opts ...Option) http.Handler {
 	cfg := &config{
-		errorLogWriter: nil,
-		netnsList:      []string{""},
+		errWriter: nil,
+		netnsList: []string{""},
 	}
 	for _, opt := range opts {
 		opt(cfg)
@@ -80,17 +80,17 @@ func Handler(opts ...Option) http.Handler {
 }
 
 type config struct {
-	errorLogWriter io.Writer
-	netnsList      []string
+	errWriter io.Writer
+	netnsList []string
 }
 
 // exporter exports stats from the conntrack CLI. The metrics are named with
 // prefix `conntrack_stats_*`.
 type exporter struct {
-	descriptors    map[string]*prometheus.Desc
-	errorLogWriter io.Writer
-	scrapeError    map[string]*uint64
-	netnsList      []string
+	descriptors map[string]*prometheus.Desc
+	errWriter   io.Writer
+	scrapeError map[string]*uint64
+	netnsList   []string
 }
 
 // newExporter creates a newExporter conntrack stats exporter
@@ -100,7 +100,7 @@ func newExporter(cfg *config) *exporter {
 		se := uint64(0)
 		scrapeError[netns] = &se
 	}
-	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames)), errorLogWriter: cfg.errorLogWriter, scrapeError: scrapeError, netnsList: cfg.netnsList}
+	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames)), errWriter: cfg.errWriter, scrapeError: scrapeError, netnsList: cfg.netnsList}
 	e.descriptors["scrape_error"] = prometheus.NewDesc(
 		prometheus.BuildFQName(promNamespace, promSubSystem, "scrape_error"),
 		"Total of error when calling/parsing conntrack command",
@@ -137,8 +137,8 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 			atomic.AddUint64(e.scrapeError[netns], 1)
 			err = fmt.Errorf("error getting metrics: %w", err)
 
-			if e.errorLogWriter != nil {
-				_, _ = fmt.Fprintln(e.errorLogWriter, err)
+			if e.errWriter != nil {
+				_, _ = fmt.Fprintln(e.errWriter, err)
 			}
 		}
 		metricsPerNetns[netns] = append(metricsPerNetns[netns], map[string]uint64{"scrape_error": atomic.LoadUint64(e.scrapeError[netns])})
@@ -170,14 +170,14 @@ func (e *exporter) getMetrics(netns string) (metricList, error) {
 	var lines []string
 	var total string
 	var err error
-	err = execInNetns(netns, func() error {
+	err = execInNetns(netns, e.errWriter, func() error {
 		lines, err = e.getConntrackStats()
 		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conntrack stats: %s", err)
 	}
-	err = execInNetns(netns, func() error {
+	err = execInNetns(netns, e.errWriter, func() error {
 		total, err = e.getConntrackCounter()
 		return err
 	})
