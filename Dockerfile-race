@@ -2,7 +2,8 @@ FROM	golang:1.19.0 as build
 WORKDIR	/conntrack-stats-exporter
 COPY	go.mod go.sum ./
 RUN	go mod download
-COPY	. .
+COPY	*.go ./
+COPY	exporter exporter
 RUN	go mod verify
 RUN	go build --race -o conntrack-stats-exporter
 
