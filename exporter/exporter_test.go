@@ -117,7 +117,7 @@ func TestMetrics(t *testing.T) {
 	})
 }
 
-// TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of tests in parallel in
+// TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of requests in parallel in
 // order to provoke the race detector.
 func TestScrapeError(t *testing.T) {
 	mockConntrackTool(t)
