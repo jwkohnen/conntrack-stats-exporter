@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/jwkohnen/conntrack-stats-exporter/exporter"
@@ -33,7 +35,7 @@ func TestMetrics(t *testing.T) {
 	mockConntrackTool(t)
 
 	recorder := httptest.NewRecorder()
-	exporter.Handler(exporter.WithNetNs([]string{""})).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	exporter.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
 
 	resp := recorder.Result()
 
@@ -115,6 +117,53 @@ func TestMetrics(t *testing.T) {
 	})
 }
 
+// TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of tests in parallel in
+// order to provoke the race detector.
+func TestScrapeError(t *testing.T) {
+	mockConntrackTool(t)
+
+	t.Setenv("CONNTRACK_STATS_EXPORTER_KAPUTT", "true")
+
+	handler := exporter.Handler()
+
+	request := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+
+	const preload = 50
+	wg := new(sync.WaitGroup)
+	wg.Add(preload)
+	for i := 0; i < preload; i++ {
+		go func() {
+			handler.ServeHTTP(new(nilResponseWriter), request)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	resp := recorder.Result()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	regex := regexp.MustCompile(`(?m)^conntrack_stats_scrape_error({.+?}|) ` + strconv.Itoa(preload+1) + `$`)
+
+	if !regex.Match(body) {
+		t.Errorf("expected to find conntrack_stats_scrape_error with count %d, but didn't", preload+1)
+	}
+}
+
 func mockConntrackTool(t *testing.T) {
 	t.Helper()
 
@@ -130,6 +179,12 @@ func mockConntrackTool(t *testing.T) {
 
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 }
+
+type nilResponseWriter struct{}
+
+func (nilResponseWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (nilResponseWriter) Header() http.Header         { return http.Header{} }
+func (nilResponseWriter) WriteHeader(int)             {}
 
 //go:embed conntrack_mock.sh
 var conntrackMockScript []byte

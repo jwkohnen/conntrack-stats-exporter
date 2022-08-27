@@ -52,20 +52,23 @@ var metricNames = map[string][]string{
 	"count":          {"netns"},
 }
 
-type Option func(opts *options)
+type Option func(cfg *config)
 
 type metricList []map[string]uint64
 
 func WithErrorLogWriter(w io.Writer) Option {
-	return func(opts *options) { opts.errorLogWriter = w }
+	return func(opts *config) { opts.errorLogWriter = w }
 }
 
 func WithNetNs(netnsList []string) Option {
-	return func(opts *options) { opts.netnsList = netnsList }
+	return func(opts *config) { opts.netnsList = netnsList }
 }
 
 func Handler(opts ...Option) http.Handler {
-	cfg := new(options)
+	cfg := &config{
+		errorLogWriter: nil,
+		netnsList:      []string{""},
+	}
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -76,7 +79,7 @@ func Handler(opts ...Option) http.Handler {
 	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 
-type options struct {
+type config struct {
 	errorLogWriter io.Writer
 	netnsList      []string
 }
@@ -91,13 +94,13 @@ type exporter struct {
 }
 
 // newExporter creates a newExporter conntrack stats exporter
-func newExporter(ops *options) *exporter {
-	scrapeError := make(map[string]*uint64, len(ops.netnsList))
-	for _, netns := range ops.netnsList {
+func newExporter(cfg *config) *exporter {
+	scrapeError := make(map[string]*uint64, len(cfg.netnsList))
+	for _, netns := range cfg.netnsList {
 		se := uint64(0)
 		scrapeError[netns] = &se
 	}
-	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames)), errorLogWriter: ops.errorLogWriter, scrapeError: scrapeError, netnsList: ops.netnsList}
+	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames)), errorLogWriter: cfg.errorLogWriter, scrapeError: scrapeError, netnsList: cfg.netnsList}
 	e.descriptors["scrape_error"] = prometheus.NewDesc(
 		prometheus.BuildFQName(promNamespace, promSubSystem, "scrape_error"),
 		"Total of error when calling/parsing conntrack command",
