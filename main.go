@@ -26,12 +26,10 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/jwkohnen/conntrack-stats-exporter/exporter"
 )
@@ -53,18 +51,20 @@ func main() {
 
 	addr := ":9371"
 	path := "/metrics"
+	netns := ""
 	flag.StringVar(&path, "path", path, "metrics endpoint path")
 	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
+	flag.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
 	flag.Parse()
-
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(exporter.New())
 
 	mux := http.NewServeMux()
 	mux.Handle(
 		path,
 		newAbortHandler(
-			promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
+			exporter.Handler(
+				exporter.WithErrorLogWriter(os.Stderr),
+				exporter.WithNetNs(strings.Split(netns, ",")),
+			),
 		),
 	)
 
@@ -101,6 +101,7 @@ func main() {
 		}
 	}()
 
+	_, _ = fmt.Fprintf(os.Stderr, "listening on %s with endpoint %q\n", addr, path)
 	err := srv.ListenAndServe()
 	wg.Wait()
 
@@ -108,7 +109,7 @@ func main() {
 		os.Exit(128 + int(receivedSignal.(syscall.Signal)))
 	}
 
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err != nil {
 		abort(err)
 	}
 }
