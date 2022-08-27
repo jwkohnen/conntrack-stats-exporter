@@ -1,6 +1,9 @@
 #!/bin/bash
 set -eux
 
+go mod verify 
+go test --race ./...
+
 export CGO_ENABLED=0
 export GOOS=linux
 
@@ -12,6 +15,4 @@ else
     export GOARCH=amd64
 fi
 
-go mod verify 
-go test ./...
 go build --ldflags="-X pkg.version=$(git describe --dirty)"
