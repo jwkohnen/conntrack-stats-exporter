@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -53,7 +54,7 @@ var metricNames = map[string][]string{
 
 type Option func(opts *options)
 
-type metricList []map[string]int
+type metricList []map[string]uint64
 
 func WithErrorLogWriter(w io.Writer) Option {
 	return func(opts *options) { opts.errorLogWriter = w }
@@ -85,15 +86,16 @@ type options struct {
 type exporter struct {
 	descriptors    map[string]*prometheus.Desc
 	errorLogWriter io.Writer
-	scrapeError    map[string]int
+	scrapeError    map[string]*uint64
 	netnsList      []string
 }
 
 // newExporter creates a newExporter conntrack stats exporter
 func newExporter(ops *options) *exporter {
-	scrapeError := make(map[string]int, len(ops.netnsList))
+	scrapeError := make(map[string]*uint64, len(ops.netnsList))
 	for _, netns := range ops.netnsList {
-		scrapeError[netns] = 0
+		se := uint64(0)
+		scrapeError[netns] = &se
 	}
 	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames)), errorLogWriter: ops.errorLogWriter, scrapeError: scrapeError, netnsList: ops.netnsList}
 	e.descriptors["scrape_error"] = prometheus.NewDesc(
@@ -129,14 +131,14 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 	for _, netns := range e.netnsList {
 		metricsPerNetns[netns], err = e.getMetrics(netns)
 		if err != nil {
-			e.scrapeError[netns]++
+			atomic.AddUint64(e.scrapeError[netns], 1)
 			err = fmt.Errorf("error getting metrics: %w", err)
 
 			if e.errorLogWriter != nil {
 				_, _ = fmt.Fprintln(e.errorLogWriter, err)
 			}
 		}
-		metricsPerNetns[netns] = append(metricsPerNetns[netns], map[string]int{"scrape_error": e.scrapeError[netns]})
+		metricsPerNetns[netns] = append(metricsPerNetns[netns], map[string]uint64{"scrape_error": atomic.LoadUint64(e.scrapeError[netns])})
 	}
 	for metricName, desc := range e.descriptors {
 		for netns, metrics := range metricsPerNetns {
@@ -148,7 +150,7 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 				labels := []string{netns}
 				cpu, ok := metric["cpu"]
 				if ok {
-					labels = append([]string{strconv.Itoa(cpu)}, labels...)
+					labels = append([]string{strconv.FormatUint(cpu, 10)}, labels...)
 				}
 				ch <- prometheus.MustNewConstMetric(
 					desc,
@@ -187,13 +189,13 @@ ParseEachOutputLine:
 		if matches == nil {
 			continue ParseEachOutputLine
 		}
-		metric := make(map[string]int)
+		metric := make(map[string]uint64)
 		for _, match := range matches {
 			if len(match) != 3 {
 				return nil, fmt.Errorf("len(%v) != 3", match)
 			}
 			key, v := match[1], match[2]
-			value, err := strconv.Atoi(v)
+			value, err := strconv.ParseUint(v, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("some key=value has a non integer value: %q: %w", line, err)
 			}
