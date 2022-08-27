@@ -228,7 +228,6 @@ func (e *exporter) getConntrackStats() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error running the conntrack command with the --stats flag: %w", err)
 	}
-	fmt.Println(out)
 
 	scanner := bufio.NewScanner(bytes.NewReader(out))
 
