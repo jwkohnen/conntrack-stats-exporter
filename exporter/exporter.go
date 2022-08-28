@@ -98,8 +98,7 @@ func newExporter(cfg *config) *exporter {
 	scrapeError := make(map[string]*uint64, len(cfg.netnsList))
 
 	for _, netns := range cfg.netnsList {
-		se := uint64(0)
-		scrapeError[netns] = &se
+		scrapeError[netns] = new(uint64)
 	}
 
 	e := &exporter{
