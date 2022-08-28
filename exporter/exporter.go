@@ -167,23 +167,29 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (e *exporter) getMetrics(netns string) (metricList, error) {
-	var lines []string
-	var total string
-	var err error
-	err = execInNetns(netns, e.errWriter, func() error {
-		lines, err = e.getConntrackStats()
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get conntrack stats: %s", err)
+	var (
+		lines   []string
+		total   string
+		errExec error
+		errNs   error
+	)
+
+	errNs = execInNetns(netns, func() { lines, errExec = e.getConntrackStats() })
+	if errNs != nil {
+		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
 	}
-	err = execInNetns(netns, e.errWriter, func() error {
-		total, err = e.getConntrackCounter()
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get conntrack counter: %s", err)
+	if errExec != nil {
+		return nil, fmt.Errorf("failed to get conntrack stats: %s", errNs)
 	}
+
+	errNs = execInNetns(netns, func() { total, errExec = e.getConntrackCounter() })
+	if errNs != nil {
+		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
+	}
+	if errExec != nil {
+		return nil, fmt.Errorf("failed to get conntrack counter: %s", errExec)
+	}
+
 	lines = append(lines, total)
 	metrics := make(metricList, len(lines))
 ParseEachOutputLine:
