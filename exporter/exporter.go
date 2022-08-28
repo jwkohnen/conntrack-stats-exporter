@@ -62,11 +62,13 @@ func WithNetNs(netnsList []string) Option      { return func(opts *config) { opt
 func WithTimeout(timeout time.Duration) Option { return func(opts *config) { opts.timeout = timeout } }
 
 func Handler(opts ...Option) http.Handler {
+	// default config values
 	cfg := config{
 		errWriter: nil,
 		netnsList: []string{""},
-		timeout:   time.Second * 3,
+		timeout:   3 * time.Second,
 	}
+
 	for _, opt := range opts {
 		opt(&cfg)
 	}

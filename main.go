@@ -50,10 +50,12 @@ func main() {
 	}
 
 	var (
-		addr    = ":9371"
-		path    = "/metrics"
-		netns   = ""
-		timeout = time.Second * 5
+		addr             = ":9371"
+		path             = "/metrics"
+		netns            = ""
+		timeoutGathering = time.Second * 5
+		timeoutShutdown  = time.Second * 3
+		timeoutHTTP      = time.Second * 10
 	)
 
 	var fs = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -61,8 +63,10 @@ func main() {
 	fs.StringVar(&path, "path", path, "metrics endpoint path")
 	fs.StringVar(&addr, "addr", addr, "TCP address to listen on")
 	fs.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
-	fs.DurationVar(&timeout, "timeout", timeout, "timeout for generating metrics")
-	
+	fs.DurationVar(&timeoutGathering, "timeout-gathering", timeoutGathering, "timeout for gathering metrics")
+	fs.DurationVar(&timeoutShutdown, "timeout-shutdown", timeoutShutdown, "timeout for graceful shutdown")
+	fs.DurationVar(&timeoutHTTP, "timeout-http", timeoutHTTP, "timeout for HTTP requests")
+
 	_ = fs.Parse(os.Args[1:])
 
 	mux := http.NewServeMux()
@@ -72,7 +76,7 @@ func main() {
 			exporter.Handler(
 				exporter.WithErrorLogWriter(os.Stderr),
 				exporter.WithNetNs(strings.Split(netns, ",")),
-				exporter.WithTimeout(timeout),
+				exporter.WithTimeout(timeoutGathering),
 			),
 		),
 	)
@@ -80,8 +84,8 @@ func main() {
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
-		ReadTimeout:  3e9,
-		WriteTimeout: 3e9,
+		ReadTimeout:  timeoutHTTP,
+		WriteTimeout: timeoutHTTP,
 	}
 
 	shutdown := make(chan os.Signal, 1)
@@ -104,7 +108,7 @@ func main() {
 
 		signal.Stop(shutdown)
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeoutShutdown)
 		defer cancel()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -118,7 +122,9 @@ func main() {
 	wg.Wait()
 
 	if errors.Is(err, http.ErrServerClosed) {
-		os.Exit(128 + int(receivedSignal.(syscall.Signal)))
+		const signaledExitCodeBase = 128
+
+		os.Exit(signaledExitCodeBase + int(receivedSignal.(syscall.Signal)))
 	}
 
 	if err != nil {

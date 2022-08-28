@@ -56,6 +56,11 @@ func (e ErrNetNs) Unwrap() error        { return e.err }
 func (e ErrNetNs) isRestoreError() bool { return e.op == opRestore }
 func (e ErrNetNs) isEnterError() bool   { return e.op == opEnter }
 
+var (
+	_ = ErrNetNs.isRestoreError
+	_ = ErrNetNs.isEnterError
+)
+
 func execInNetns(name string, fn func()) (err error) {
 	if name == "" {
 		fn()
