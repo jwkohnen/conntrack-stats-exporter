@@ -1,0 +1,13 @@
+linters:
+  disable-all: true
+  enable:
+  - lll 
+  - errorlint
+  - nlreturn
+  - wsl
+  - makezero
+  - godot
+
+linters-settings:
+  lll:
+    line-length: 120

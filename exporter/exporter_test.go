@@ -117,8 +117,8 @@ func TestMetrics(t *testing.T) {
 	})
 }
 
-// TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of requests in parallel in
-// order to provoke the race detector.
+// TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of requests in parallel
+// in order to provoke the race detector.
 func TestScrapeError(t *testing.T) {
 	mockConntrackTool(t)
 
@@ -129,8 +129,10 @@ func TestScrapeError(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 	const preload = 50
+
 	wg := new(sync.WaitGroup)
 	wg.Add(preload)
+
 	for i := 0; i < preload; i++ {
 		go func() {
 			defer wg.Done()

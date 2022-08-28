@@ -52,6 +52,7 @@ func main() {
 	addr := ":9371"
 	path := "/metrics"
 	netns := ""
+
 	flag.StringVar(&path, "path", path, "metrics endpoint path")
 	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
 	flag.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
@@ -77,9 +78,11 @@ func main() {
 
 	shutdown := make(chan os.Signal, 1)
 
-	var receivedSignal os.Signal
+	var (
+		receivedSignal os.Signal
+		wg             sync.WaitGroup
+	)
 
-	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
@@ -103,6 +106,7 @@ func main() {
 
 	_, _ = fmt.Fprintf(os.Stderr, "listening on %s with endpoint %q\n", addr, path)
 	err := srv.ListenAndServe()
+
 	wg.Wait()
 
 	if errors.Is(err, http.ErrServerClosed) {

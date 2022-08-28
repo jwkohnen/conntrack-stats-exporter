@@ -93,20 +93,28 @@ type exporter struct {
 	netnsList   []string
 }
 
-// newExporter creates a newExporter conntrack stats exporter
+// newExporter creates a newExporter conntrack stats exporter.
 func newExporter(cfg *config) *exporter {
 	scrapeError := make(map[string]*uint64, len(cfg.netnsList))
+
 	for _, netns := range cfg.netnsList {
 		se := uint64(0)
 		scrapeError[netns] = &se
 	}
-	e := &exporter{descriptors: make(map[string]*prometheus.Desc, len(metricNames)), errWriter: cfg.errWriter, scrapeError: scrapeError, netnsList: cfg.netnsList}
+
+	e := &exporter{
+		descriptors: make(map[string]*prometheus.Desc, len(metricNames)),
+		errWriter:   cfg.errWriter,
+		scrapeError: scrapeError,
+		netnsList:   cfg.netnsList,
+	}
 	e.descriptors["scrape_error"] = prometheus.NewDesc(
 		prometheus.BuildFQName(promNamespace, promSubSystem, "scrape_error"),
 		"Total of error when calling/parsing conntrack command",
 		[]string{"netns"},
 		nil,
 	)
+
 	for metricName, metricLabels := range metricNames {
 		e.descriptors[metricName] = prometheus.NewDesc(
 			prometheus.BuildFQName(promNamespace, promSubSystem, metricName),
@@ -130,19 +138,28 @@ func (e *exporter) Describe(ch chan<- *prometheus.Desc) {
 // Collect implements the collect method of the prometheus.Collector interface.
 func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 	metricsPerNetns := make(map[string]metricList)
+
 	var err error
 	for _, netns := range e.netnsList {
 		metricsPerNetns[netns], err = e.getMetrics(netns)
 		if err != nil {
 			atomic.AddUint64(e.scrapeError[netns], 1)
+
 			err = fmt.Errorf("error getting metrics: %w", err)
 
 			if e.errWriter != nil {
 				_, _ = fmt.Fprintln(e.errWriter, err)
 			}
 		}
-		metricsPerNetns[netns] = append(metricsPerNetns[netns], map[string]uint64{"scrape_error": atomic.LoadUint64(e.scrapeError[netns])})
+
+		metricsPerNetns[netns] = append(
+			metricsPerNetns[netns],
+			map[string]uint64{
+				"scrape_error": atomic.LoadUint64(e.scrapeError[netns]),
+			},
+		)
 	}
+
 	for metricName, desc := range e.descriptors {
 		for netns, metrics := range metricsPerNetns {
 			for _, metric := range metrics {
@@ -150,7 +167,9 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 				if !ok {
 					continue
 				}
+
 				labels := []string{netns}
+
 				cpu, ok := metric["cpu"]
 				if ok {
 					labels = append([]string{strconv.FormatUint(cpu, 10)}, labels...)
@@ -178,20 +197,22 @@ func (e *exporter) getMetrics(netns string) (metricList, error) {
 	if errNs != nil {
 		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
 	}
+
 	if errExec != nil {
-		return nil, fmt.Errorf("failed to get conntrack stats: %s", errNs)
+		return nil, fmt.Errorf("failed to get conntrack stats: %w", errNs)
 	}
 
 	errNs = execInNetns(netns, func() { total, errExec = e.getConntrackCounter() })
 	if errNs != nil {
 		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
 	}
+
 	if errExec != nil {
-		return nil, fmt.Errorf("failed to get conntrack counter: %s", errExec)
+		return nil, fmt.Errorf("failed to get conntrack counter: %w", errExec)
 	}
 
 	lines = append(lines, total)
-	metrics := make(metricList, len(lines))
+	metrics := make(metricList, 0, len(lines))
 ParseEachOutputLine:
 	for _, line := range lines {
 		matches := regex.FindAllStringSubmatch(line, -1)
@@ -212,6 +233,7 @@ ParseEachOutputLine:
 		}
 		metrics = append(metrics, metric)
 	}
+
 	return metrics, nil
 }
 
@@ -251,5 +273,6 @@ func (e *exporter) getConntrackStats() ([]string, error) {
 	if scanner.Err() != nil {
 		return nil, fmt.Errorf("error reading the output of the conntrack command: %w", scanner.Err())
 	}
+
 	return lines, nil
 }
