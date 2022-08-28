@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -56,21 +57,18 @@ type Option func(cfg *config)
 
 type metricList []map[string]uint64
 
-func WithErrorLogWriter(w io.Writer) Option {
-	return func(opts *config) { opts.errWriter = w }
-}
-
-func WithNetNs(netnsList []string) Option {
-	return func(opts *config) { opts.netnsList = netnsList }
-}
+func WithErrorLogWriter(w io.Writer) Option    { return func(opts *config) { opts.errWriter = w } }
+func WithNetNs(netnsList []string) Option      { return func(opts *config) { opts.netnsList = netnsList } }
+func WithTimeout(timeout time.Duration) Option { return func(opts *config) { opts.timeout = timeout } }
 
 func Handler(opts ...Option) http.Handler {
-	cfg := &config{
+	cfg := config{
 		errWriter: nil,
 		netnsList: []string{""},
+		timeout:   time.Second * 3,
 	}
 	for _, opt := range opts {
-		opt(cfg)
+		opt(&cfg)
 	}
 
 	reg := prometheus.NewRegistry()
@@ -82,19 +80,19 @@ func Handler(opts ...Option) http.Handler {
 type config struct {
 	errWriter io.Writer
 	netnsList []string
+	timeout   time.Duration
 }
 
 // exporter exports stats from the conntrack CLI. The metrics are named with
 // prefix `conntrack_stats_*`.
 type exporter struct {
 	descriptors map[string]*prometheus.Desc
-	errWriter   io.Writer
 	scrapeError map[string]*uint64
-	netnsList   []string
+	cfg         config
 }
 
 // newExporter creates a newExporter conntrack stats exporter.
-func newExporter(cfg *config) *exporter {
+func newExporter(cfg config) *exporter {
 	scrapeError := make(map[string]*uint64, len(cfg.netnsList))
 
 	for _, netns := range cfg.netnsList {
@@ -103,9 +101,8 @@ func newExporter(cfg *config) *exporter {
 
 	e := &exporter{
 		descriptors: make(map[string]*prometheus.Desc, len(metricNames)),
-		errWriter:   cfg.errWriter,
 		scrapeError: scrapeError,
-		netnsList:   cfg.netnsList,
+		cfg:         cfg,
 	}
 	e.descriptors["scrape_error"] = prometheus.NewDesc(
 		prometheus.BuildFQName(promNamespace, promSubSystem, "scrape_error"),
@@ -136,18 +133,21 @@ func (e *exporter) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect implements the collect method of the prometheus.Collector interface.
 func (e *exporter) Collect(ch chan<- prometheus.Metric) {
+	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.timeout)
+	defer cancel()
+
 	metricsPerNetns := make(map[string]metricList)
 
 	var err error
-	for _, netns := range e.netnsList {
-		metricsPerNetns[netns], err = e.getMetrics(netns)
+	for _, netns := range e.cfg.netnsList {
+		metricsPerNetns[netns], err = e.getMetrics(ctx, netns)
 		if err != nil {
 			atomic.AddUint64(e.scrapeError[netns], 1)
 
 			err = fmt.Errorf("error getting metrics: %w", err)
 
-			if e.errWriter != nil {
-				_, _ = fmt.Fprintln(e.errWriter, err)
+			if e.cfg.errWriter != nil {
+				_, _ = fmt.Fprintln(e.cfg.errWriter, err)
 			}
 		}
 
@@ -184,7 +184,7 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func (e *exporter) getMetrics(netns string) (metricList, error) {
+func (e *exporter) getMetrics(ctx context.Context, netns string) (metricList, error) {
 	var (
 		lines   []string
 		total   string
@@ -192,7 +192,7 @@ func (e *exporter) getMetrics(netns string) (metricList, error) {
 		errNs   error
 	)
 
-	errNs = execInNetns(netns, func() { lines, errExec = e.getConntrackStats() })
+	errNs = execInNetns(netns, func() { lines, errExec = e.getConntrackStats(ctx) })
 	if errNs != nil {
 		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
 	}
@@ -201,7 +201,7 @@ func (e *exporter) getMetrics(netns string) (metricList, error) {
 		return nil, fmt.Errorf("failed to get conntrack stats: %w", errNs)
 	}
 
-	errNs = execInNetns(netns, func() { total, errExec = e.getConntrackCounter() })
+	errNs = execInNetns(netns, func() { total, errExec = e.getConntrackCounter(ctx) })
 	if errNs != nil {
 		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
 	}
@@ -236,10 +236,7 @@ ParseEachOutputLine:
 	return metrics, nil
 }
 
-func (e *exporter) getConntrackCounter() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3e9)
-	defer cancel()
-
+func (e *exporter) getConntrackCounter(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "conntrack", "--count")
 
 	out, err := cmd.Output()
@@ -250,10 +247,7 @@ func (e *exporter) getConntrackCounter() (string, error) {
 	return fmt.Sprintf("count=%s", out), nil
 }
 
-func (e *exporter) getConntrackStats() ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3e9)
-	defer cancel()
-
+func (e *exporter) getConntrackStats(ctx context.Context) ([]string, error) {
 	cmd := exec.CommandContext(ctx, "conntrack", "--stats")
 
 	out, err := cmd.Output()

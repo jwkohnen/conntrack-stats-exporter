@@ -49,14 +49,21 @@ func main() {
 		debug.SetGCPercent(10)
 	}
 
-	addr := ":9371"
-	path := "/metrics"
-	netns := ""
+	var (
+		addr    = ":9371"
+		path    = "/metrics"
+		netns   = ""
+		timeout = time.Second * 5
+	)
 
-	flag.StringVar(&path, "path", path, "metrics endpoint path")
-	flag.StringVar(&addr, "addr", addr, "TCP address to listen on")
-	flag.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
-	flag.Parse()
+	var fs = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	fs.StringVar(&path, "path", path, "metrics endpoint path")
+	fs.StringVar(&addr, "addr", addr, "TCP address to listen on")
+	fs.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
+	fs.DurationVar(&timeout, "timeout", timeout, "timeout for generating metrics")
+	
+	_ = fs.Parse(os.Args[1:])
 
 	mux := http.NewServeMux()
 	mux.Handle(
@@ -65,6 +72,7 @@ func main() {
 			exporter.Handler(
 				exporter.WithErrorLogWriter(os.Stderr),
 				exporter.WithNetNs(strings.Split(netns, ",")),
+				exporter.WithTimeout(timeout),
 			),
 		),
 	)

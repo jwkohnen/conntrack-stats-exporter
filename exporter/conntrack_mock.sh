@@ -2,6 +2,10 @@
 
 set -eu
 
+if [ "${CONNTRACK_STATS_EXPORTER_SLEEP:-}" != "" ]; then
+  sleep "${CONNTRACK_STATS_EXPORTER_SLEEP}"
+fi
+
 if [ "${CONNTRACK_STATS_EXPORTER_KAPUTT:-}" = "true" ]; then
   echo "kaputt"
   exit 1
