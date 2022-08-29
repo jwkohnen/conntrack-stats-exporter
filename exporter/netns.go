@@ -22,46 +22,11 @@ import (
 	"runtime"
 
 	"github.com/vishvananda/netns"
+
+	"github.com/jwkohnen/conntrack-stats-exporter/exporter/internal"
 )
 
-type ErrNetNs struct {
-	op  string
-	err error
-}
-
-const (
-	opRestore = "restore"
-	opEnter   = "enter"
-	opCleanup = "cleanup"
-	opPrepare = "prepare"
-)
-
-func opPriority(op string) int {
-	switch op {
-	case opRestore:
-		return 1
-	case opEnter:
-		return 2
-	case opCleanup:
-		return 3
-	case opPrepare:
-		return 4
-	default:
-		panic(fmt.Sprintf("unknown op: %q", op))
-	}
-}
-
-func (e ErrNetNs) Error() string        { return fmt.Sprintf("exec_in_ns: op(%s): %v", e.op, e.err) }
-func (e ErrNetNs) Unwrap() error        { return e.err }
-func (e ErrNetNs) isRestoreError() bool { return e.op == opRestore }
-func (e ErrNetNs) isEnterError() bool   { return e.op == opEnter }
-
-var (
-	_ = ErrNetNs.isRestoreError
-	_ = ErrNetNs.isEnterError
-)
-
-func execInNetns(name string, fn func()) (err error) {
+func (e *exporter) execInNetns(name string, fn func()) (err error) {
 	if name == "" {
 		fn()
 
@@ -75,17 +40,20 @@ func execInNetns(name string, fn func()) (err error) {
 
 	targetNs, err = netns.GetFromName(name)
 	if err != nil {
-		return ErrNetNs{op: opPrepare, err: fmt.Errorf("failed to open fd of target netns %q: %w", name, err)}
+		return e.scrapeErrors.Count(
+			name,
+			internal.OpNetnsPrepare,
+			fmt.Errorf("failed to open fd of target netns %q: %w", name, err),
+		)
 	}
 
 	defer func() {
 		if errClose := targetNs.Close(); errClose != nil {
-			var errNs *ErrNetNs
-			if err == nil || errors.As(err, &errNs) && opPriority(errNs.op) < opPriority(opCleanup) {
-				err = ErrNetNs{
-					op:  opCleanup,
-					err: fmt.Errorf("failed to close fd of target netns %q: %w", name, errClose),
-				}
+			errCleanup := e.scrapeErrors.Count(name, internal.OpNetnsCleanup, errClose)
+
+			var errNs *internal.Err
+			if err == nil || errors.As(err, &errNs) && errCleanup.OpPriority(errNs) {
+				err = errCleanup
 			}
 		}
 	}()
@@ -95,36 +63,51 @@ func execInNetns(name string, fn func()) (err error) {
 
 		originalNs, err = netns.Get()
 		if err != nil {
-			return ErrNetNs{op: opPrepare, err: fmt.Errorf("failed to open fd of original netns: %w", err)}
+			return e.scrapeErrors.Count(
+				name,
+				internal.OpNetnsPrepare,
+				fmt.Errorf("failed to open fd of original netns: %w", err),
+			)
 		}
 
 		defer func() {
-			if errRestore := netns.Set(originalNs); errRestore != nil {
-				var errNs *ErrNetNs
-				if err == nil || errors.As(err, &errNs) && opPriority(errNs.op) < opPriority(opRestore) {
-					err = ErrNetNs{
-						op:  opRestore,
-						err: fmt.Errorf("failed to restore original netns: %w", errRestore),
-					}
+			if errSetOrig := netns.Set(originalNs); errSetOrig != nil {
+				errRestore := e.scrapeErrors.Count(
+					name,
+					internal.OpNetnsRestore,
+					fmt.Errorf("failed to restore original netns: %w", errSetOrig),
+				)
+
+				var errNs *internal.Err
+				if err == nil || errors.As(err, &errNs) && errRestore.OpPriority(errNs) {
+					err = errRestore
 				}
 			}
 
 			runtime.UnlockOSThread()
 
 			if errClose := originalNs.Close(); errClose != nil {
-				var errNs *ErrNetNs
-				if err == nil || errors.As(err, &errNs) && opPriority(errNs.op) < opPriority(opCleanup) {
-					err = ErrNetNs{
-						op:  opCleanup,
-						err: fmt.Errorf("failed to close fd of original netns: %w", errClose),
-					}
+				errCleanup := e.scrapeErrors.Count(
+					name,
+					internal.OpNetnsCleanup,
+					fmt.Errorf("failed to close fd of original netns: %w", errClose),
+				)
+
+				var errNs *internal.Err
+				if err == nil || errors.As(err, &errNs) && errCleanup.OpPriority(errNs) {
+					// FIXME: handle non-myErr errors
+					err = errCleanup
 				}
 			}
 		}()
 
 		err = netns.Set(targetNs)
 		if err != nil {
-			return ErrNetNs{op: opEnter, err: fmt.Errorf("failed to enter target netns %q: %w", name, err)}
+			return e.scrapeErrors.Count(
+				name,
+				internal.OpNetnsEnter,
+				fmt.Errorf("failed to enter target netns: %w", err),
+			)
 		}
 	}
 

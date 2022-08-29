@@ -13,8 +13,10 @@ func BenchmarkHandler(b *testing.B) {
 
 	var (
 		r = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		w = new(nilResponseWriter)
+		w nullResponseWriter
 	)
+
+	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		exporter.Handler().ServeHTTP(w, r)
@@ -25,9 +27,9 @@ func BenchmarkServeHTTP(b *testing.B) {
 	mockConntrackTool(b)
 
 	var (
-		r = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		w = new(nilResponseWriter)
 		h = exporter.Handler()
+		r = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		w nullResponseWriter
 	)
 
 	b.ResetTimer()
@@ -36,3 +38,9 @@ func BenchmarkServeHTTP(b *testing.B) {
 		h.ServeHTTP(w, r)
 	}
 }
+
+type nullResponseWriter struct{}
+
+func (nullResponseWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (nullResponseWriter) Header() http.Header         { return http.Header{} }
+func (nullResponseWriter) WriteHeader(int)             {}

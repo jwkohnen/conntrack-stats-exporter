@@ -5,6 +5,7 @@ RUN	go mod download
 COPY	*.go ./
 COPY	exporter exporter
 RUN	go mod verify
+RUN	go test --race ./...
 RUN	go build --race -o conntrack-stats-exporter
 
 FROM	debian:stable-slim

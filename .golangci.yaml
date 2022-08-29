@@ -35,7 +35,7 @@ linters:
     # - gochecknoglobals
     # - gocognit
     - godot
-    - godox
+    # - godox
     # - goerr113
     # - nestif
     - testpackage
@@ -51,7 +51,8 @@ linters-settings:
     packages:
       - github.com/sirupsen/logrus
   funlen:
-    lines: 100
+    lines: 110
+    statements: 50
   goimports:
     local-prefixes: github.com/jwkohnen/conntrack-stats-exporter
   gomnd:
@@ -61,6 +62,7 @@ linters-settings:
       - '2'
       - '3'
       - '4'
+      - '5'
       - '10'
       - '64'
 

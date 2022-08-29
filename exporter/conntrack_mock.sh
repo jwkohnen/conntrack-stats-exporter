@@ -23,7 +23,7 @@ fi
 
 if [ "${CONNTRACK_STATS_EXPORTER_KAPUTT:-}" = "true" ]; then
   echo "kaputt"
-  exit 1
+  exit "${CONNTRACK_STATS_EXPORTER_EXIT_CODE:-1}"
 fi
 
 case "${1:-}" in

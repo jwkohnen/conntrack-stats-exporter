@@ -17,228 +17,213 @@
 package exporter
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os/exec"
 	"regexp"
-	"strconv"
-	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/jwkohnen/conntrack-stats-exporter/exporter/internal"
 )
-
-const (
-	promNamespace = "conntrack"
-	promSubSystem = "stats"
-)
-
-var regex = regexp.MustCompile(`([a-z_]+)=(\d+)`)
-
-var metricNames = map[string][]string{
-	"found":          {"cpu", "netns"},
-	"invalid":        {"cpu", "netns"},
-	"ignore":         {"cpu", "netns"},
-	"insert":         {"cpu", "netns"},
-	"insert_failed":  {"cpu", "netns"},
-	"drop":           {"cpu", "netns"},
-	"early_drop":     {"cpu", "netns"},
-	"error":          {"cpu", "netns"},
-	"search_restart": {"cpu", "netns"},
-	"count":          {"netns"},
-}
 
 type Option func(cfg *config)
 
-type metricList []map[string]uint64
-
-func WithErrorLogWriter(w io.Writer) Option    { return func(opts *config) { opts.errWriter = w } }
-func WithNetNs(netnsList []string) Option      { return func(opts *config) { opts.netnsList = netnsList } }
-func WithTimeout(timeout time.Duration) Option { return func(opts *config) { opts.timeout = timeout } }
+func WithErrorLogger(log func(string, ...any)) Option { return func(cfg *config) { cfg.logger = log } }
+func WithNetNs(netnsList []string) Option             { return func(cfg *config) { cfg.netnsList = netnsList } }
+func WithTimeout(timeout time.Duration) Option        { return func(cfg *config) { cfg.timeout = timeout } }
+func WithPrefix(prefix string) Option                 { return func(cfg *config) { cfg.prefix = prefix } }
 
 func Handler(opts ...Option) http.Handler {
 	// default config values
 	cfg := config{
-		errWriter: nil,
 		netnsList: []string{""},
 		timeout:   3 * time.Second,
+		prefix:    "conntrack_stats",
+		logger:    nil,
 	}
 
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(newExporter(cfg))
+	scrapeErrors := internal.NewScrapeErrors(cfg.netnsList)
 
-	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{EnableOpenMetrics: true})
+	logger := func(string, ...any) {}
+	if cfg.logger != nil {
+		logger = cfg.logger
+	}
+
+	return &exporter{
+		cfg:          cfg,
+		scrapeErrors: scrapeErrors,
+		log:          logger,
+	}
 }
 
 type config struct {
-	errWriter io.Writer
 	netnsList []string
 	timeout   time.Duration
+	prefix    string
+	logger    func(string, ...any)
 }
 
 // exporter exports stats from the conntrack CLI. The metrics are named with
 // prefix `conntrack_stats_*`.
 type exporter struct {
-	descriptors map[string]*prometheus.Desc
-	scrapeError map[string]*uint64
-	cfg         config
+	cfg          config
+	scrapeErrors *internal.ScrapeErrors
+	log          func(string, ...any)
 }
 
-// newExporter creates a newExporter conntrack stats exporter.
-func newExporter(cfg config) *exporter {
-	scrapeError := make(map[string]*uint64, len(cfg.netnsList))
-
-	for _, netns := range cfg.netnsList {
-		scrapeError[netns] = new(uint64)
+func (e *exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 
-	e := &exporter{
-		descriptors: make(map[string]*prometheus.Desc, len(metricNames)),
-		scrapeError: scrapeError,
-		cfg:         cfg,
-	}
-	e.descriptors["scrape_error"] = prometheus.NewDesc(
-		prometheus.BuildFQName(promNamespace, promSubSystem, "scrape_error"),
-		"Total of error when calling/parsing conntrack command",
-		[]string{"netns"},
-		nil,
-	)
-
-	for metricName, metricLabels := range metricNames {
-		e.descriptors[metricName] = prometheus.NewDesc(
-			prometheus.BuildFQName(promNamespace, promSubSystem, metricName),
-			"Total of conntrack "+metricName,
-			metricLabels,
-			nil,
-		)
-	}
-
-	return e
-}
-
-// Describe implements the describe method of the prometheus.Collector
-// interface.
-func (e *exporter) Describe(ch chan<- *prometheus.Desc) {
-	for _, g := range e.descriptors {
-		ch <- g
-	}
-}
-
-// Collect implements the collect method of the prometheus.Collector interface.
-func (e *exporter) Collect(ch chan<- prometheus.Metric) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.timeout)
+	ctx, cancel := context.WithTimeout(r.Context(), e.cfg.timeout)
 	defer cancel()
 
-	metricsPerNetns := make(map[string]metricList)
+	metrics := make(internal.Metrics, internal.NumberOfMetrics())
 
-	var err error
 	for _, netns := range e.cfg.netnsList {
-		metricsPerNetns[netns], err = e.getMetrics(ctx, netns)
+		err := e.gatherMetricsForNetNs(ctx, netns, metrics)
 		if err != nil {
-			atomic.AddUint64(e.scrapeError[netns], 1)
-
-			err = fmt.Errorf("error getting metrics: %w", err)
-
-			if e.cfg.errWriter != nil {
-				_, _ = fmt.Fprintln(e.cfg.errWriter, err)
-			}
+			e.log("error gathering metrics for netns %q: %v\n", netns, err)
 		}
-
-		metricsPerNetns[netns] = append(
-			metricsPerNetns[netns],
-			map[string]uint64{
-				"scrape_error": atomic.LoadUint64(e.scrapeError[netns]),
-			},
-		)
 	}
 
-	for metricName, desc := range e.descriptors {
-		for netns, metrics := range metricsPerNetns {
-			for _, metric := range metrics {
-				metricValue, ok := metric[metricName]
-				if !ok {
-					continue
-				}
+	metrics.GatherScrapeErrors(e.cfg.prefix, e.scrapeErrors)
 
-				labels := []string{netns}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
 
-				cpu, ok := metric["cpu"]
-				if ok {
-					labels = append([]string{strconv.FormatUint(cpu, 10)}, labels...)
-				}
-				ch <- prometheus.MustNewConstMetric(
-					desc,
-					prometheus.CounterValue,
-					float64(metricValue),
-					labels...,
+	_, err := metrics.WriteTo(w)
+	if err != nil {
+		e.log("error writing metrics to response writer: %v\n", err)
+		return
+	}
+}
+
+func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metrics internal.Metrics) error {
+	statsOutput, countOutput, err := e.execConntrackTool(ctx, netns)
+	if err != nil {
+		return err
+	}
+
+	matches := _regex.FindAllSubmatch(statsOutput, -1)
+
+	if len(matches) == 0 {
+		return e.scrapeErrors.Count(netns, internal.OpToolOutputNoMatch, nil)
+	}
+
+	for _, match := range matches {
+		var cpu string
+
+		for i, metricShortName := range _regex.SubexpNames() {
+			value := match[i]
+
+			switch metricShortName {
+			case "":
+				// skip full match
+				continue
+			case "cpu":
+				cpu = string(value)
+			default:
+				metrics.GetOrInit(e.cfg.prefix, metricShortName).AddSample(
+					internal.Labels{
+						{
+							Key:   "cpu",
+							Value: cpu,
+						},
+						{
+							Key:   "netns",
+							Value: netns,
+						},
+					},
+					string(value),
 				)
 			}
 		}
 	}
-}
 
-func (e *exporter) getMetrics(ctx context.Context, netns string) (metricList, error) {
-	var (
-		lines   []string
-		total   string
-		errExec error
-		errNs   error
+	metrics.GetOrInit(e.cfg.prefix, "count").AddSample(
+		internal.Labels{
+			internal.Label{
+				Key:   "netns",
+				Value: netns,
+			},
+		},
+		countOutput,
 	)
 
-	errNs = execInNetns(netns, func() { lines, errExec = e.getConntrackStats(ctx) })
-	if errNs != nil {
-		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
-	}
-
-	if errExec != nil {
-		return nil, fmt.Errorf("failed to get conntrack stats: %w", errExec)
-	}
-
-	errNs = execInNetns(netns, func() { total, errExec = e.getConntrackCounter(ctx) })
-	if errNs != nil {
-		return nil, fmt.Errorf("error executing in netns %q: %w", netns, errNs)
-	}
-
-	if errExec != nil {
-		return nil, fmt.Errorf("failed to get conntrack counter: %w", errExec)
-	}
-
-	lines = append(lines, total)
-	metrics := make(metricList, 0, len(lines))
-ParseEachOutputLine:
-	for _, line := range lines {
-		matches := regex.FindAllStringSubmatch(line, -1)
-		if matches == nil {
-			continue ParseEachOutputLine
-		}
-		metric := make(map[string]uint64)
-		for _, match := range matches {
-			if len(match) != 3 {
-				return nil, fmt.Errorf("len(%v) != 3", match)
-			}
-			key, v := match[1], match[2]
-			value, err := strconv.ParseUint(v, 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("some key=value has a non integer value: %q: %w", line, err)
-			}
-			metric[key] = value
-		}
-		metrics = append(metrics, metric)
-	}
-
-	return metrics, nil
+	return nil
 }
 
-func (e *exporter) getConntrackCounter(ctx context.Context) (string, error) {
+func (e *exporter) execConntrackTool(
+	ctx context.Context,
+	netns string,
+) (
+	statsOutput []byte,
+	countOutput string,
+	err error,
+) {
+	for _, fn := range []func() error{
+		func() error {
+			var err error
+
+			statsOutput, err = getConntrackStats(ctx)
+			return err
+		},
+		func() error {
+			var err error
+
+			countOutput, err = getConntrackCounter(ctx)
+			return err
+		},
+	} {
+		var errExec error
+
+		errNs := e.execInNetns(netns, func() { errExec = fn() })
+
+		if errNs != nil {
+			return nil, "", fmt.Errorf("error executing in netns %q: %w", netns, errNs)
+		}
+
+		ctxErr := ctx.Err()
+
+		if errors.Is(ctxErr, context.DeadlineExceeded) {
+			return nil, "", e.scrapeErrors.Count(
+				netns,
+				internal.OpTimeout,
+				errExec,
+			)
+		}
+
+		if errors.Is(ctxErr, context.Canceled) {
+			return nil, "", e.scrapeErrors.Count(
+				netns,
+				internal.OpClientGone,
+				errExec,
+			)
+		}
+
+		if errExec != nil {
+			return nil, "", e.scrapeErrors.Count(
+				netns,
+				internal.OpExecTool,
+				fmt.Errorf("failed to exec conntrack tool: %w", errExec),
+			)
+		}
+	}
+
+	return statsOutput, countOutput, nil
+}
+
+func getConntrackCounter(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "conntrack", "--count")
 
 	out, err := cmd.Output()
@@ -246,28 +231,29 @@ func (e *exporter) getConntrackCounter(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("error running the conntrack command with the --count flag: %w", err)
 	}
 
-	return fmt.Sprintf("count=%s", out), nil
+	return string(bytes.TrimSpace(out)), nil
 }
 
-func (e *exporter) getConntrackStats(ctx context.Context) ([]string, error) {
+func getConntrackStats(ctx context.Context) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "conntrack", "--stats")
 
-	out, err := cmd.Output()
+	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("error running the conntrack command with the --stats flag: %w", err)
 	}
 
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-
-	var lines []string
-
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	if scanner.Err() != nil {
-		return nil, fmt.Errorf("error reading the output of the conntrack command: %w", scanner.Err())
-	}
-
-	return lines, nil
+	return output, nil
 }
+
+var _regex = regexp.MustCompile(`` +
+	`(?m)` +
+	`cpu=(?P<cpu>\d+)\s+` +
+	`found=(?P<found>\d+)\s+` +
+	`invalid=(?P<invalid>\d+)\s+` +
+	`insert=(?P<insert>\d+)\s+` +
+	`insert_failed=(?P<insert_failed>\d+)\s+` +
+	`drop=(?P<drop>\d+)\s+` +
+	`early_drop=(?P<early_drop>\d+)\s+` +
+	`error=(?P<error>\d+)\s+` +
+	`search_restart=(?P<search_restart>\d+)`,
+)

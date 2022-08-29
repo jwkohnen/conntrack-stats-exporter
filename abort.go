@@ -24,7 +24,7 @@ import (
 	"runtime"
 )
 
-// newAbortHandler augments a handler so it escalates any panic to termination
+// newAbortHandler augments a handler, so it escalates any panic to termination
 // of the process.
 func newAbortHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(
@@ -43,7 +43,7 @@ func newAbortHandler(next http.Handler) http.Handler {
 // current goroutine to STDERR, then terminates the process with exit code 1.
 //
 // Kubernetes' termination log is limited to 2 kB or 80 lines, whichever is
-// smaller. Kubernetes will only log the last bytes, not the first.  Hence it
+// smaller. Kubernetes will only log the last bytes, not the first.  Hence, it
 // is important to write not more than the limit. Most likely the first lines
 // are most valuable for debugging.
 //

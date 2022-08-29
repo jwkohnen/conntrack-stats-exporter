@@ -18,7 +18,9 @@ package exporter_test
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,10 +30,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jwkohnen/conntrack-stats-exporter/exporter"
+	"github.com/jwkohnen/conntrack-stats-exporter/exporter/internal"
 )
 
 func TestConntrackMock(t *testing.T) {
@@ -82,14 +87,12 @@ func TestMetrics(t *testing.T) {
 		metricName, cpuValues := metricName, cpuValues
 
 		t.Run("Header+Type+Metric: "+metricName, func(t *testing.T) {
-			t.Parallel()
-
 			// Apologies for using regex! As a reminder (?m) enables multi-line mode.  This regex is supposed to make
 			// sure the metric is prepended by a HELP as well as a TYPE header and that each type is `counter`.
 			regex := regexp.MustCompile(
 				fmt.Sprintf(
 					`(?m)`+
-						`^# HELP %s.*?\n`+
+						`^# HELP %s .*?\n`+
 						`^# TYPE %s counter\n`+
 						`^%s\{`,
 					metricName, metricName, metricName,
@@ -104,8 +107,6 @@ func TestMetrics(t *testing.T) {
 			cpu, cpuValue := cpu, cpuValue
 
 			t.Run(fmt.Sprintf("%s{cpu=%d}", metricName, cpu), func(t *testing.T) {
-				t.Parallel()
-
 				// Again, apologies for using regex.  This regex is supposed to match the metric line for a given CPU
 				// and its value.  The group should match a metric with only cpu label, any label prepending the cpu
 				// label as well as any label following the cpu label.  If adding any label to the metric, this regex
@@ -122,8 +123,6 @@ func TestMetrics(t *testing.T) {
 	}
 
 	t.Run("conntrack_stats_count", func(t *testing.T) {
-		t.Parallel()
-
 		// A regex again, but this one is not too bad, or is it?
 		regex := regexp.MustCompile(`(?m)^conntrack_stats_count({.+?}|) 434$`)
 
@@ -131,39 +130,264 @@ func TestMetrics(t *testing.T) {
 			t.Errorf("expected to find conntrack_stats_count, but didn't")
 		}
 	})
+
+	if t.Failed() {
+		t.Log(string(body))
+	}
 }
 
 // TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of requests in parallel
 // in order to provoke the race detector.
+//
+//nolint:funlen
 func TestScrapeError(t *testing.T) {
 	mockConntrackTool(t)
 
-	t.Setenv("CONNTRACK_STATS_EXPORTER_KAPUTT", "true")
+	const concurrency = 50
 
-	handler := exporter.Handler()
+	var (
+		errorLogBuf = new(bytes.Buffer)
 
-	request := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		srv = httptest.NewServer(
+			exporter.Handler(
+				exporter.WithTimeout(500*time.Millisecond),
+				exporter.WithErrorLogger(logger(errorLogBuf)),
+			),
+		)
 
-	const preload = 50
+		client = srv.Client()
+	)
 
-	wg := new(sync.WaitGroup)
-	wg.Add(preload)
+	t.Cleanup(srv.Close)
 
-	for i := 0; i < preload; i++ {
-		go func() {
-			defer wg.Done()
-			handler.ServeHTTP(new(nilResponseWriter), request)
-		}()
+	request, err := http.NewRequest(http.MethodGet, srv.URL, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
+
+	t.Run("slow tool", func(t *testing.T) {
+		t.Setenv("CONNTRACK_STATS_EXPORTER_SLEEP", "1")
+
+		timings := make([]time.Duration, concurrency)
+
+		wg := new(sync.WaitGroup)
+		wg.Add(concurrency)
+
+		for i := 0; i < concurrency; i++ {
+			i := i
+			req := request.WithContext(context.Background())
+
+			go func() {
+				defer wg.Done()
+
+				start := time.Now()
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+
+				_, _ = io.Copy(io.Discard, resp.Body)
+
+				if err := resp.Body.Close(); err != nil {
+					t.Error(err)
+					return
+				}
+
+				timings[i] = time.Since(start)
+			}()
+		}
+		wg.Wait()
+
+		if t.Failed() {
+			t.Logf("timings: %v", timings)
+		}
+	})
+
+	t.Run("inpatient client", func(t *testing.T) {
+		t.Setenv("CONNTRACK_STATS_EXPORTER_SLEEP", "1")
+
+		timings := make([]time.Duration, concurrency)
+
+		wg := new(sync.WaitGroup)
+		wg.Add(concurrency)
+		for i := 0; i < concurrency; i++ {
+			i := i
+
+			go func() {
+				defer wg.Done()
+
+				ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+				defer cancel()
+
+				req := request.WithContext(ctx)
+				start := time.Now()
+
+				//nolint:bodyclose
+				_, err := client.Do(req)
+
+				timings[i] = time.Since(start)
+
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Errorf("expected context.DeadlineExceeded, but got %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+
+		if t.Failed() {
+			t.Logf("timings: %v", timings)
+		}
+	})
+
+	for _, code := range []string{"0", "1"} {
+		code := code
+
+		t.Run("broken tool code "+code, func(t *testing.T) {
+			t.Setenv("CONNTRACK_STATS_EXPORTER_KAPUTT", "true")
+			t.Setenv("CONNTRACK_STATS_EXPORTER_EXIT_CODE", code)
+
+			timings := make([]time.Duration, concurrency)
+
+			wg := new(sync.WaitGroup)
+			wg.Add(concurrency)
+
+			for i := 0; i < concurrency; i++ {
+				i := i
+				req := request.WithContext(context.Background())
+
+				go func() {
+					defer wg.Done()
+
+					start := time.Now()
+					resp, err := client.Do(req)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+
+					_, _ = io.Copy(io.Discard, resp.Body)
+					_ = resp.Body.Close()
+
+					timings[i] = time.Since(start)
+				}()
+			}
+			wg.Wait()
+
+			if t.Failed() {
+				t.Logf("timings: %v", timings)
+			}
+		})
+	}
+
+	t.Run("check counters", func(t *testing.T) {
+		time.Sleep(1 * time.Second)
+
+		start := time.Now()
+
+		resp, err := client.Do(request.WithContext(context.Background()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected status %s, got status %s", http.StatusText(http.StatusOK), resp.Status)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		if t.Failed() {
+			t.Logf("timing: %v", time.Since(start))
+		}
+
+		regex := regexp.MustCompile(
+			`(?m)^conntrack_stats_scrape_error\{.*?cause="(?P<cause>[a-z_]+)".*?} (?P<count>\d+)$`,
+		)
+		matches := regex.FindAllSubmatch(body, -1)
+
+		counts := make(map[string]int, len(matches))
+
+		for _, match := range matches {
+			cause := string(match[1])
+
+			count, err := strconv.Atoi(string(match[2]))
+			if err != nil {
+				t.Error(err)
+
+				continue
+			}
+
+			counts[cause] = count
+		}
+
+		wantt := []struct {
+			cause string
+			count int
+		}{
+			{string(internal.OpTimeout), concurrency},
+			{string(internal.OpClientGone), concurrency},
+			{string(internal.OpExecTool), concurrency},
+			{string(internal.OpToolOutputNoMatch), concurrency},
+		}
+
+		for _, want := range wantt {
+			got, ok := counts[want.cause]
+			if !ok {
+				t.Errorf("expected to find cause %q, but didn't", want.cause)
+			}
+
+			if got != want.count {
+				t.Errorf("expected count %q=%d, got %d", want.cause, want.count, got)
+			}
+		}
+
+		totalWants := 0
+		for _, want := range wantt {
+			totalWants += want.count
+		}
+
+		totalCounts := 0
+		for _, count := range counts {
+			totalCounts += count
+		}
+
+		if totalCounts != totalWants {
+			t.Errorf("expected total count %d, got %d", totalWants, totalCounts)
+		}
+
+		if t.Failed() {
+			t.Logf("error log:\n%s", errorLogBuf.String())
+			t.Logf("response:\n%s", string(body))
+		}
+	})
+}
+
+func TestUndefinedNetns(t *testing.T) {
+	t.Parallel()
+
+	var (
+		errorLogBuf = new(bytes.Buffer)
+
+		request = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		handler = exporter.Handler(
+			exporter.WithNetNs([]string{"this-ns-does-not-exist"}),
+			exporter.WithErrorLogger(logger(errorLogBuf)),
+		)
+	)
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 
 	resp := recorder.Result()
-
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+		t.Fatalf("expected status %s, got status %s", http.StatusText(http.StatusOK), resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -175,34 +399,106 @@ func TestScrapeError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	regex := regexp.MustCompile(`(?m)^conntrack_stats_scrape_error({.+?}|) ` + strconv.Itoa(preload+1) + `$`)
-
+	regex := regexp.MustCompile(`(?m)^conntrack_stats_scrape_error\{.*?cause="netns_prepare".*?} 1$`)
 	if !regex.Match(body) {
-		t.Errorf("expected to find conntrack_stats_scrape_error with count %d, but didn't", preload+1)
+		t.Errorf("expected to find scrape error with cause \"netns_prepare\", but didn't")
+	}
+
+	if t.Failed() {
+		t.Logf("error log:\n%s", errorLogBuf.String())
+		t.Logf("response:\n%s", string(body))
 	}
 }
 
-func mockConntrackTool(tb testing.TB) {
-	tb.Helper()
+func TestMetric_WriteTo(t *testing.T) {
+	t.Parallel()
 
-	if len(conntrackMockScript) == 0 {
-		tb.Fatal("conntrackMockScript is empty")
+	mm := internal.Metrics{
+		"test_name": &internal.Metric{
+			Name: "test_name",
+			Help: "test_help",
+			Samples: internal.Samples{
+				internal.Sample{
+					Labels: internal.Labels{
+						internal.Label{
+							Key:   "labelKey",
+							Value: "labelValue",
+						},
+						internal.Label{
+							Key:   "labelKey2",
+							Value: "labelValue2",
+						},
+					},
+					Count: "1",
+				},
+				internal.Sample{
+					Labels: internal.Labels{
+						internal.Label{
+							Key:   "labelKey3",
+							Value: "labelValue3",
+						},
+					},
+					Count: "2",
+				},
+			},
+		},
 	}
 
-	dir := tb.TempDir()
-
-	if err := os.WriteFile(filepath.Join(dir, "conntrack"), conntrackMockScript, 0755); err != nil {
-		tb.Fatal(err)
+	var buf strings.Builder
+	if _, err := mm.WriteTo(&buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	tb.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	got := buf.String()
+
+	want := "# HELP test_name test_help\n" +
+		"# TYPE test_name counter\n" +
+		"test_name{labelKey=\"labelValue\",labelKey2=\"labelValue2\"} 1\n" +
+		"test_name{labelKey3=\"labelValue3\"} 2\n"
+
+	if got != want {
+		t.Errorf("\ngot:  %q\nwant: %q", got, want)
+	}
 }
 
-type nilResponseWriter struct{}
+func mockConntrackTool(t testing.TB) {
+	t.Helper()
 
-func (nilResponseWriter) Write(p []byte) (int, error) { return len(p), nil }
-func (nilResponseWriter) Header() http.Header         { return http.Header{} }
-func (nilResponseWriter) WriteHeader(int)             {}
+	if len(_conntrackMockScript) == 0 {
+		t.Fatal("conntrackMockScript is empty")
+	}
+
+	const (
+		perm = 0755
+		sep  = string(os.PathListSeparator)
+	)
+
+	var (
+		dir  = t.TempDir()
+		path = filepath.Join(dir, "conntrack")
+	)
+
+	if err := os.WriteFile(path, _conntrackMockScript, perm); err != nil {
+		t.Fatal(err)
+	}
+
+	if envPath, ok := os.LookupEnv("PATH"); ok {
+		t.Setenv("PATH", dir+sep+envPath)
+	} else {
+		t.Setenv("PATH", dir)
+	}
+}
+
+func logger(w io.Writer) func(string, ...any) {
+	mu := new(sync.Mutex)
+
+	return func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		_, _ = fmt.Fprintf(w, format, args...)
+	}
+}
 
 //go:embed conntrack_mock.sh
-var conntrackMockScript []byte
+var _conntrackMockScript []byte

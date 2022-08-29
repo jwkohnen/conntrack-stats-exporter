@@ -21,6 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -53,6 +54,8 @@ func main() {
 		addr             = ":9371"
 		path             = "/metrics"
 		netns            = ""
+		prefix           = "conntrack_stats"
+		quiet            = false
 		timeoutGathering = time.Second * 5
 		timeoutShutdown  = time.Second * 3
 		timeoutHTTP      = time.Second * 10
@@ -63,23 +66,28 @@ func main() {
 	fs.StringVar(&path, "path", path, "metrics endpoint path")
 	fs.StringVar(&addr, "addr", addr, "TCP address to listen on")
 	fs.StringVar(&netns, "netns", netns, "List of netns names separated by comma")
+	fs.StringVar(&prefix, "prefix", prefix, "metrics prefix")
+	fs.BoolVar(&quiet, "quiet", quiet, "don't log anything")
 	fs.DurationVar(&timeoutGathering, "timeout-gathering", timeoutGathering, "timeout for gathering metrics")
 	fs.DurationVar(&timeoutShutdown, "timeout-shutdown", timeoutShutdown, "timeout for graceful shutdown")
 	fs.DurationVar(&timeoutHTTP, "timeout-http", timeoutHTTP, "timeout for HTTP requests")
 
 	_ = fs.Parse(os.Args[1:])
 
+	opts := []exporter.Option{
+		exporter.WithNetNs(strings.Split(netns, ",")),
+		exporter.WithTimeout(timeoutGathering),
+		exporter.WithPrefix(prefix),
+	}
+
+	logf := log.New(os.Stderr, "", 0).Printf
+
+	if !quiet {
+		opts = append(opts, exporter.WithErrorLogger(logf))
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle(
-		path,
-		newAbortHandler(
-			exporter.Handler(
-				exporter.WithErrorLogWriter(os.Stderr),
-				exporter.WithNetNs(strings.Split(netns, ",")),
-				exporter.WithTimeout(timeoutGathering),
-			),
-		),
-	)
+	mux.Handle(path, newAbortHandler(exporter.Handler(opts...)))
 
 	srv := &http.Server{
 		Addr:         addr,
@@ -116,7 +124,10 @@ func main() {
 		}
 	}()
 
-	_, _ = fmt.Fprintf(os.Stderr, "listening on %s with endpoint %q\n", addr, path)
+	if !quiet {
+		logf("listening on %s with endpoint %q\n", addr, path)
+	}
+
 	err := srv.ListenAndServe()
 
 	wg.Wait()
