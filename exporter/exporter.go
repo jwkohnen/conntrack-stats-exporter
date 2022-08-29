@@ -200,7 +200,7 @@ func (e *exporter) getMetrics(ctx context.Context, netns string) (metricList, er
 	}
 
 	if errExec != nil {
-		return nil, fmt.Errorf("failed to get conntrack stats: %w", errNs)
+		return nil, fmt.Errorf("failed to get conntrack stats: %w", errExec)
 	}
 
 	errNs = execInNetns(netns, func() { total, errExec = e.getConntrackCounter(ctx) })
