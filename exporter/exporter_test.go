@@ -182,20 +182,20 @@ func TestScrapeError(t *testing.T) {
 	}
 }
 
-func mockConntrackTool(t *testing.T) {
-	t.Helper()
+func mockConntrackTool(tb testing.TB) {
+	tb.Helper()
 
 	if len(conntrackMockScript) == 0 {
-		t.Fatal("conntrackMockScript is empty")
+		tb.Fatal("conntrackMockScript is empty")
 	}
 
-	dir := t.TempDir()
+	dir := tb.TempDir()
 
 	if err := os.WriteFile(filepath.Join(dir, "conntrack"), conntrackMockScript, 0755); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	tb.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 }
 
 type nilResponseWriter struct{}
