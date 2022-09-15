@@ -23,12 +23,13 @@ if [ "$(lscpu | grep Architecture | awk '{print $2}')" = "aarch64" ]; then
     echo "arm64"
     export GOARCH=arm64
 
-    CGO_ENABLED=0 go test ./...
+    # FIXME(jwkohnen): disabled because timings are off wildly on GitHub Actions executor host
+    # CGO_ENABLED=0 go test -v ./...
 else
     echo "amd64"
     export GOARCH=amd64
 
-    go test --race ./...
+    go test --race -v ./...
 fi
 
 CGO_ENABLED=0 go build --ldflags="-X pkg.version=$(git describe --dirty)"
