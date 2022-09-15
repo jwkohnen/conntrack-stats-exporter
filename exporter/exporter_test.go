@@ -199,9 +199,7 @@ func TestScrapeError(t *testing.T) {
 		}
 		wg.Wait()
 
-		if t.Failed() {
-			t.Logf("timings: %v", timings)
-		}
+		t.Logf("timings: %v", timings)
 	})
 
 	t.Run("inpatient client", func(t *testing.T) {
@@ -235,9 +233,7 @@ func TestScrapeError(t *testing.T) {
 		}
 		wg.Wait()
 
-		if t.Failed() {
-			t.Logf("timings: %v", timings)
-		}
+		t.Logf("timings: %v", timings)
 	})
 
 	for _, code := range []string{"0", "1"} {
@@ -274,9 +270,7 @@ func TestScrapeError(t *testing.T) {
 			}
 			wg.Wait()
 
-			if t.Failed() {
-				t.Logf("timings: %v", timings)
-			}
+			t.Logf("timings: %v", timings)
 		})
 	}
 
@@ -303,9 +297,7 @@ func TestScrapeError(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if t.Failed() {
-			t.Logf("timing: %v", time.Since(start))
-		}
+		t.Logf("timing: %v", time.Since(start))
 
 		regex := regexp.MustCompile(
 			`(?m)^conntrack_stats_scrape_error\{.*?cause="(?P<cause>[a-z_]+)".*?} (?P<count>\d+)$`,
