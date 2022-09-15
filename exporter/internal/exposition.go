@@ -2,6 +2,7 @@ package internal
 
 import (
 	"io"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -58,12 +59,23 @@ func (mm Metrics) GatherScrapeErrors(prefix string, scrapeErrors *ScrapeErrors) 
 }
 
 func (mm Metrics) WriteTo(w io.Writer) (n int64, err error) {
-	for _, metric := range mm {
-		if len(metric.Samples) == 0 {
+	// Write out metrics sorted, because that generates less
+	// headache when debugging the output à la `watch curl`.
+	names := make([]string, 0, len(mm))
+	for name := range mm {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	for _, name := range names {
+		m := mm[name]
+
+		if len(m.Samples) == 0 {
 			continue
 		}
 
-		n2, err := metric.WriteTo(w)
+		n2, err := m.WriteTo(w)
 		n += n2
 
 		if err != nil {
