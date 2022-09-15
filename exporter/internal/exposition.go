@@ -14,6 +14,7 @@ type (
 	Metric struct {
 		Name string
 		Help string
+		Type string
 
 		Samples Samples
 	}
@@ -22,7 +23,7 @@ type (
 
 	Sample struct {
 		Labels Labels
-		Count  string
+		Value  string
 	}
 
 	Labels []Label
@@ -33,7 +34,7 @@ type (
 	}
 )
 
-func (mm Metrics) GetOrInit(prefix, metricName string) *Metric {
+func (mm Metrics) GetOrInit(prefix, metricType, metricName string) *Metric {
 	if _, ok := mm[metricName]; ok {
 		return mm[metricName]
 	}
@@ -41,6 +42,7 @@ func (mm Metrics) GetOrInit(prefix, metricName string) *Metric {
 	m := &Metric{
 		Name: prefix + "_" + metricName,
 		Help: _help[metricName],
+		Type: metricType,
 	}
 
 	mm[metricName] = m
@@ -86,12 +88,12 @@ func (mm Metrics) WriteTo(w io.Writer) (n int64, err error) {
 	return n, err
 }
 
-func (m *Metric) AddSample(labels Labels, count string) {
+func (m *Metric) AddSample(labels Labels, value string) {
 	m.Samples = append(
 		m.Samples,
 		Sample{
 			Labels: labels,
-			Count:  count,
+			Value:  value,
 		},
 	)
 }
@@ -147,9 +149,9 @@ func (c *countWriter) Write(p []byte) (n int, err error) {
 var _tmpl = template.Must(
 	template.New("metric").Parse(
 		"# HELP {{ $.Name }} {{ $.Help }}\n" +
-			"# TYPE {{ $.Name }} counter\n" +
+			"# TYPE {{ $.Name }} {{ $.Type}}\n" +
 			"{{ range $.Samples }}" +
-			"{{ $.Name }}{{ `{` }}{{ .Labels.String }}{{ `}` }} {{ .Count }}\n" +
+			"{{ $.Name }}{{ `{` }}{{ .Labels.String }}{{ `}` }} {{ .Value }}\n" +
 			"{{ end }}",
 	),
 )

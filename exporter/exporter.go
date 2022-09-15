@@ -70,8 +70,6 @@ type config struct {
 	logger    func(string, ...any)
 }
 
-// exporter exports stats from the conntrack CLI. The metrics are named with
-// prefix `conntrack_stats_*`.
 type exporter struct {
 	cfg          config
 	scrapeErrors *internal.ScrapeErrors
@@ -133,7 +131,7 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 			case "cpu":
 				cpu = string(value)
 			default:
-				metrics.GetOrInit(e.cfg.prefix, metricShortName).AddSample(
+				metrics.GetOrInit(e.cfg.prefix, "counter", metricShortName).AddSample(
 					internal.Labels{
 						{
 							Key:   "cpu",
@@ -150,7 +148,7 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 		}
 	}
 
-	metrics.GetOrInit(e.cfg.prefix, "count").AddSample(
+	metrics.GetOrInit(e.cfg.prefix, "gauge", "count").AddSample(
 		internal.Labels{
 			internal.Label{
 				Key:   "netns",

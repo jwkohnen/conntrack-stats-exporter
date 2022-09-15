@@ -124,7 +124,10 @@ func TestMetrics(t *testing.T) {
 
 	t.Run("conntrack_stats_count", func(t *testing.T) {
 		// A regex again, but this one is not too bad, or is it?
-		regex := regexp.MustCompile(`(?m)^conntrack_stats_count({.+?}|) 434$`)
+		regex := regexp.MustCompile(`(?m)` +
+			`^# HELP conntrack_stats_count .*?\n` +
+			`^# TYPE conntrack_stats_count gauge\n` +
+			`^conntrack_stats_count({.+?}) 434$`)
 
 		if !regex.Match(body) {
 			t.Errorf("expected to find conntrack_stats_count, but didn't")
@@ -187,7 +190,10 @@ func TestScrapeError(t *testing.T) {
 					return
 				}
 
-				_, _ = io.Copy(io.Discard, resp.Body)
+				if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+					t.Error(err)
+					return
+				}
 
 				if err := resp.Body.Close(); err != nil {
 					t.Error(err)
@@ -222,13 +228,11 @@ func TestScrapeError(t *testing.T) {
 				start := time.Now()
 
 				//nolint:bodyclose
-				_, err := client.Do(req)
-
-				timings[i] = time.Since(start)
-
-				if !errors.Is(err, context.DeadlineExceeded) {
+				if _, err := client.Do(req); !errors.Is(err, context.DeadlineExceeded) {
 					t.Errorf("expected context.DeadlineExceeded, but got %v", err)
 				}
+
+				timings[i] = time.Since(start)
 			}()
 		}
 		wg.Wait()
@@ -262,8 +266,15 @@ func TestScrapeError(t *testing.T) {
 						return
 					}
 
-					_, _ = io.Copy(io.Discard, resp.Body)
-					_ = resp.Body.Close()
+					if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+						t.Error(err)
+						return
+					}
+
+					if err := resp.Body.Close(); err != nil {
+						t.Error(err)
+						return
+					}
 
 					timings[i] = time.Since(start)
 				}()
@@ -409,6 +420,7 @@ func TestMetric_WriteTo(t *testing.T) {
 		"test_name": &internal.Metric{
 			Name: "test_name",
 			Help: "test_help",
+			Type: "counter",
 			Samples: internal.Samples{
 				internal.Sample{
 					Labels: internal.Labels{
@@ -421,7 +433,7 @@ func TestMetric_WriteTo(t *testing.T) {
 							Value: "labelValue2",
 						},
 					},
-					Count: "1",
+					Value: "1",
 				},
 				internal.Sample{
 					Labels: internal.Labels{
@@ -430,7 +442,7 @@ func TestMetric_WriteTo(t *testing.T) {
 							Value: "labelValue3",
 						},
 					},
-					Count: "2",
+					Value: "2",
 				},
 			},
 		},

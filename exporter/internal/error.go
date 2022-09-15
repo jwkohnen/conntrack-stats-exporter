@@ -68,7 +68,7 @@ func (s *ScrapeErrors) Samples() Samples {
 							Value: string(cause),
 						},
 					},
-					Count: strconv.FormatUint(count, 10),
+					Value: strconv.FormatUint(count, 10),
 				},
 			)
 		}
