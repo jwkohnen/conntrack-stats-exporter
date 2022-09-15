@@ -134,6 +134,18 @@ func TestMetrics(t *testing.T) {
 		}
 	})
 
+	t.Run("conntrack_stats_scrape_error", func(t *testing.T) {
+		// A regex again, but this one is not too bad, or is it?
+		regex := regexp.MustCompile(`(?m)` +
+			`^# HELP conntrack_stats_scrape_error .*?\n` +
+			`^# TYPE conntrack_stats_scrape_error counter\n` +
+			`^conntrack_stats_scrape_error({.+?}) \d+$`)
+
+		if !regex.Match(body) {
+			t.Errorf("expected to find conntrack_stats_scrape_error, but didn't")
+		}
+	})
+
 	if t.Failed() {
 		t.Log(string(body))
 	}

@@ -54,6 +54,7 @@ func (mm Metrics) GatherScrapeErrors(prefix string, scrapeErrors *ScrapeErrors) 
 	m := &Metric{
 		Name:    prefix + "_scrape_error",
 		Help:    _help["scrape_error"],
+		Type:    "counter",
 		Samples: scrapeErrors.Samples(),
 	}
 
