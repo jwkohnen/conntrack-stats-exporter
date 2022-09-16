@@ -1,6 +1,7 @@
 package internal
 
 import (
+	_ "embed"
 	"io"
 	"sort"
 	"strings"
@@ -129,8 +130,8 @@ func (m *Metric) AddSample(labels Labels, value string) {
 }
 
 func (m *Metric) WriteTo(w io.Writer) (n int64, err error) {
-	cw := &countWriter{w: w}
-	err = _tmpl.Execute(cw, m)
+	cw := countWriter{w: w}
+	err = _expositionTmpl.Execute(&cw, m)
 
 	return cw.count, err
 }
@@ -174,12 +175,9 @@ func (c *countWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-var _tmpl = template.Must(
-	template.New("metric").Parse(
-		"# HELP {{ $.Name }} {{ $.Help }}\n" +
-			"# TYPE {{ $.Name }} {{ $.Type}}\n" +
-			"{{ range $.Samples }}" +
-			"{{ $.Name }}{{ `{` }}{{ .Labels.String }}{{ `}` }} {{ .Value }}\n" +
-			"{{ end }}",
-	),
+var (
+	_expositionTmpl = template.Must(template.New("exposition").Parse(_tmpl))
+
+	//go:embed exposition.tmpl
+	_tmpl string
 )

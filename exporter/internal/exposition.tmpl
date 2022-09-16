@@ -1,0 +1,5 @@
+# HELP {{ $.Name }} {{ $.Help }}
+# TYPE {{ $.Name }} {{ $.Type }}
+{{ range $.Samples -}}
+{{ $.Name }}{{ `{` }}{{ .Labels }}{{ `}` }} {{ .Value }}
+{{ end -}}

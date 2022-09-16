@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -251,7 +252,7 @@ func TestScrapeError(t *testing.T) {
 		}
 		wg.Wait()
 
-		t.Logf("timings: %v", timings)
+		t.Logf("timing median: %v", median(timings))
 	})
 
 	t.Run("inpatient client", func(t *testing.T) {
@@ -283,7 +284,7 @@ func TestScrapeError(t *testing.T) {
 		}
 		wg.Wait()
 
-		t.Logf("timings: %v", timings)
+		t.Logf("timing median: %v", median(timings))
 	})
 
 	for _, code := range []string{"0", "1"} {
@@ -327,7 +328,7 @@ func TestScrapeError(t *testing.T) {
 			}
 			wg.Wait()
 
-			t.Logf("timings: %v", timings)
+			t.Logf("timing median: %v", median(timings))
 		})
 	}
 
@@ -496,6 +497,11 @@ func logger(w io.Writer) func(string, ...any) {
 
 		_, _ = fmt.Fprintf(w, format, args...)
 	}
+}
+
+func median(timings []time.Duration) time.Duration {
+	sort.Slice(timings, func(i, j int) bool { return timings[i] < timings[j] })
+	return timings[len(timings)/2]
 }
 
 //go:embed conntrack_mock.sh
