@@ -8,8 +8,13 @@ import (
 )
 
 type (
-	// Metrics is a map from the metric short name to a Metric.
-	Metrics map[string]*Metric
+	Metrics struct {
+		metrics        metrics
+		fixMetricNames bool
+	}
+
+	// metrics is a map from the metric short name to a Metric.
+	metrics map[string]*Metric
 
 	Metric struct {
 		Name string
@@ -34,34 +39,58 @@ type (
 	}
 )
 
+func NewMetrics(fixMetricNames bool) Metrics {
+	return Metrics{
+		metrics:        make(metrics, len(_help)),
+		fixMetricNames: fixMetricNames,
+	}
+}
+
 func (mm Metrics) GetOrInit(prefix, metricType, metricName string) *Metric {
-	if _, ok := mm[metricName]; ok {
-		return mm[metricName]
+	if _, ok := mm.metrics[metricName]; ok {
+		return mm.metrics[metricName]
+	}
+
+	var suffix string
+	if mm.fixMetricNames {
+		suffix = "_total"
+
+		if metricType == "gauge" {
+			suffix = "_current"
+		}
 	}
 
 	m := &Metric{
-		Name: prefix + "_" + metricName,
+		Name: prefix + "_" + metricName + suffix,
 		Help: _help[metricName],
 		Type: metricType,
 	}
 
-	mm[metricName] = m
+	mm.metrics[metricName] = m
 
 	return m
 }
 
 func (mm Metrics) GatherScrapeErrors(prefix string, scrapeErrors *ScrapeErrors) {
+	var suffix string
+
+	if mm.fixMetricNames {
+		suffix = "_total"
+	}
+
 	m := &Metric{
-		Name:    prefix + "_scrape_error",
+		Name:    prefix + "_scrape_error" + suffix,
 		Help:    _help["scrape_error"],
 		Type:    "counter",
 		Samples: scrapeErrors.Samples(),
 	}
 
-	mm["scrape_error"] = m
+	mm.metrics["scrape_error"] = m
 }
 
-func (mm Metrics) WriteTo(w io.Writer) (n int64, err error) {
+func (mm Metrics) WriteTo(w io.Writer) (int64, error) { return mm.metrics.WriteTo(w) }
+
+func (mm metrics) WriteTo(w io.Writer) (n int64, err error) {
 	// Write out metrics sorted, because that generates less
 	// headache when debugging the output à la `watch curl`.
 	names := make([]string, 0, len(mm))
@@ -118,8 +147,6 @@ func (ll Labels) String() string {
 func (l Label) String() string {
 	return l.Key + `="` + l.Value + `"`
 }
-
-func NumberOfMetrics() int { return len(_help) }
 
 // TODO(jwkohnen): improve help texts!
 var _help = map[string]string{

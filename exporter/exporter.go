@@ -35,6 +35,7 @@ func WithErrorLogger(log func(string, ...any)) Option { return func(cfg *config)
 func WithNetNs(netnsList []string) Option             { return func(cfg *config) { cfg.netnsList = netnsList } }
 func WithTimeout(timeout time.Duration) Option        { return func(cfg *config) { cfg.timeout = timeout } }
 func WithPrefix(prefix string) Option                 { return func(cfg *config) { cfg.prefix = prefix } }
+func WithFixMetricNames() Option                      { return func(cfg *config) { cfg.fixMetricNames = true } }
 
 func Handler(opts ...Option) http.Handler {
 	// default config values
@@ -64,10 +65,11 @@ func Handler(opts ...Option) http.Handler {
 }
 
 type config struct {
-	netnsList []string
-	timeout   time.Duration
-	prefix    string
-	logger    func(string, ...any)
+	netnsList      []string
+	timeout        time.Duration
+	prefix         string
+	logger         func(string, ...any)
+	fixMetricNames bool
 }
 
 type exporter struct {
@@ -85,7 +87,7 @@ func (e *exporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), e.cfg.timeout)
 	defer cancel()
 
-	metrics := make(internal.Metrics, internal.NumberOfMetrics())
+	metrics := internal.NewMetrics(e.cfg.fixMetricNames)
 
 	for _, netns := range e.cfg.netnsList {
 		err := e.gatherMetricsForNetNs(ctx, netns, metrics)

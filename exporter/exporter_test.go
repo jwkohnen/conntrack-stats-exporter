@@ -30,7 +30,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,6 +48,41 @@ func TestConntrackMock(t *testing.T) {
 
 	if !bytes.Equal(out, []byte("conntrack v0.0.0-mock (conntrack-stats-exporter)\n")) {
 		t.Error("whatever it is we've executed, it was not our mock script")
+	}
+}
+
+func TestPromtoolCheckMetrics(t *testing.T) {
+	promtool, err := exec.LookPath("promtool")
+	if err != nil {
+		t.Skip("Skipping test because promtool is not in $PATH")
+	}
+
+	mockConntrackTool(t)
+
+	var (
+		handler  = exporter.Handler(exporter.WithFixMetricNames())
+		recorder = httptest.NewRecorder()
+		request  = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	)
+
+	handler.ServeHTTP(recorder, request)
+
+	body := recorder.Body.Bytes()
+
+	if len(bytes.TrimSpace(body)) == 0 {
+		t.Fatal("empty response body")
+	}
+
+	cmd := exec.Command(promtool, "check", "metrics")
+	cmd.Stdin = bytes.NewReader(body)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("promtool check metrics failed: %v", err)
+	}
+
+	if len(bytes.TrimSpace(out)) > 0 {
+		t.Log(string(out))
 	}
 }
 
@@ -422,58 +456,6 @@ func TestUndefinedNetns(t *testing.T) {
 	if t.Failed() {
 		t.Logf("error log:\n%s", errorLogBuf.String())
 		t.Logf("response:\n%s", string(body))
-	}
-}
-
-func TestMetric_WriteTo(t *testing.T) {
-	t.Parallel()
-
-	mm := internal.Metrics{
-		"test_name": &internal.Metric{
-			Name: "test_name",
-			Help: "test_help",
-			Type: "counter",
-			Samples: internal.Samples{
-				internal.Sample{
-					Labels: internal.Labels{
-						internal.Label{
-							Key:   "labelKey",
-							Value: "labelValue",
-						},
-						internal.Label{
-							Key:   "labelKey2",
-							Value: "labelValue2",
-						},
-					},
-					Value: "1",
-				},
-				internal.Sample{
-					Labels: internal.Labels{
-						internal.Label{
-							Key:   "labelKey3",
-							Value: "labelValue3",
-						},
-					},
-					Value: "2",
-				},
-			},
-		},
-	}
-
-	var buf strings.Builder
-	if _, err := mm.WriteTo(&buf); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	got := buf.String()
-
-	want := "# HELP test_name test_help\n" +
-		"# TYPE test_name counter\n" +
-		"test_name{labelKey=\"labelValue\",labelKey2=\"labelValue2\"} 1\n" +
-		"test_name{labelKey3=\"labelValue3\"} 2\n"
-
-	if got != want {
-		t.Errorf("\ngot:  %q\nwant: %q", got, want)
 	}
 }
 
