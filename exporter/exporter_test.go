@@ -84,12 +84,11 @@ func TestPromtoolCheckMetrics(t *testing.T) {
 
 	if len(bytes.TrimSpace(out)) > 0 {
 		t.Log(string(out))
+		t.Logf("response:\n%s", string(body))
 	}
 }
 
-func TestMetrics(t *testing.T) {
-	mockConntrackTool(t)
-
+func testMetrics(t *testing.T, want map[string][]int) {
 	recorder := httptest.NewRecorder()
 	exporter.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
 
@@ -108,17 +107,7 @@ func TestMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for metricName, cpuValues := range map[string][4]int{
-		// not checking "conntrack_stats_count" here, because it has a CPU label by accident and that is subject to change
-		"conntrack_stats_drop":           {3, 8, 13, 0},
-		"conntrack_stats_early_drop":     {4, 9, 14, 0},
-		"conntrack_stats_error":          {5, 10, 2, 0},
-		"conntrack_stats_found":          {13, 6, 16, 15},
-		"conntrack_stats_insert":         {1, 6, 11, 0},
-		"conntrack_stats_insert_failed":  {2, 7, 12, 0},
-		"conntrack_stats_invalid":        {11258, 10298, 17439, 12065},
-		"conntrack_stats_search_restart": {76531, 64577, 75364, 66740},
-	} {
+	for metricName, cpuValues := range want {
 		metricName, cpuValues := metricName, cpuValues
 
 		t.Run("Header+Type+Metric: "+metricName, func(t *testing.T) {
@@ -184,6 +173,43 @@ func TestMetrics(t *testing.T) {
 	if t.Failed() {
 		t.Log(string(body))
 	}
+}
+
+func TestMetrics(t *testing.T) {
+	mockConntrackTool(t)
+
+	testMetrics(t, map[string][]int{
+		// not checking "conntrack_stats_count" here, because it has a CPU label by accident and that is subject to change
+		"conntrack_stats_drop":           {3, 8, 13, 0},
+		"conntrack_stats_early_drop":     {4, 9, 14, 0},
+		"conntrack_stats_error":          {5, 10, 2, 0},
+		"conntrack_stats_found":          {13, 6, 16, 15},
+		"conntrack_stats_insert":         {1, 6, 11, 0},
+		"conntrack_stats_insert_failed":  {2, 7, 12, 0},
+		"conntrack_stats_invalid":        {11258, 10298, 17439, 12065},
+		"conntrack_stats_search_restart": {76531, 64577, 75364, 66740},
+	})
+}
+
+func TestIssue19(t *testing.T) {
+	mockConntrackTool(t)
+
+	t.Setenv("CONNTRACK_STATS_EXPORTER_ISSUE_19", "true")
+
+	testMetrics(t, map[string][]int{
+		"conntrack_stats_found": {50, 28, 32, 20, 19, 20, 37, 22, 13, 43, 32, 41, 50, 40, 66, 49},
+		"conntrack_stats_invalid": {43271, 29808, 31119, 31296, 30548, 30001, 31807, 29568, 31952, 42525, 44387, 42617,
+			43855, 42069, 43443, 42856},
+		"conntrack_stats_ignore": {26302191, 8379307, 26088734, 8265418, 26002588, 8340823, 25968413, 8430048,
+			25949280, 8652643, 26330305, 8881758, 26362895, 8843429, 26356212, 8764532},
+		"conntrack_stats_insert":        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		"conntrack_stats_insert_failed": {30, 9, 5, 1, 2, 2, 16, 1, 1, 17, 32, 53, 37, 34, 44, 34},
+		"conntrack_stats_drop":          {30, 9, 5, 1, 2, 2, 16, 1, 1, 17, 32, 53, 37, 34, 44, 34},
+		"conntrack_stats_early_drop":    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		"conntrack_stats_error":         {24, 5, 25, 23, 22, 13, 23, 9, 27, 30, 28, 17, 34, 17, 33, 32},
+		"conntrack_stats_search_restart": {1053423, 455902, 914079, 446014, 943922, 465287, 950686, 451268, 927906,
+			527808, 1025931, 547542, 1006812, 543103, 1009081, 526916},
+	})
 }
 
 // TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of requests in parallel

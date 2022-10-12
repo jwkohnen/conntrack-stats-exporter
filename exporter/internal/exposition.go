@@ -153,6 +153,7 @@ func (l Label) String() string {
 var _help = map[string]string{
 	"found":          "Total of conntrack found",
 	"invalid":        "Total of conntrack invalid",
+	"ignore":         "Total of conntrack ignore",
 	"insert":         "Total of conntrack insert",
 	"insert_failed":  "Total of conntrack insert_failed",
 	"drop":           "Total of conntrack drop",

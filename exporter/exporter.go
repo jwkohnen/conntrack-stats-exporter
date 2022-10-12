@@ -126,6 +126,11 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 		for i, metricShortName := range _regex.SubexpNames() {
 			value := match[i]
 
+			if len(value) == 0 {
+				// skip empty sub-matches
+				continue
+			}
+
 			switch metricShortName {
 			case "":
 				// skip full match
@@ -250,6 +255,7 @@ var _regex = regexp.MustCompile(`` +
 	`cpu=(?P<cpu>\d+)\s+` +
 	`found=(?P<found>\d+)\s+` +
 	`invalid=(?P<invalid>\d+)\s+` +
+	`(?:ignore=(?P<ignore>\d+)\s+)?` +
 	`insert=(?P<insert>\d+)\s+` +
 	`insert_failed=(?P<insert_failed>\d+)\s+` +
 	`drop=(?P<drop>\d+)\s+` +
