@@ -12,6 +12,11 @@ Kubernetes clusters and causes drop of initial packets of NATted connections
 (both UDP, TCP.) The `insert_failed` statistic correlates with dropped
 connections due to this bug.
 
+# Helm Chart
+
+See [Prometheus Community Charts](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-conntrack-stats-exporter).
+Kudos to @monotek!
+
 ## Further information about the conntrack race bug and its effect on Kubernetes
 
 * https://blog.quentin-machu.fr/2018/06/24/5-15s-dns-lookups-on-kubernetes/
