@@ -1,4 +1,4 @@
-FROM	golang:1.20.2 as build
+FROM	golang:1.20.3 as build
 WORKDIR	/conntrack-stats-exporter
 COPY	go.mod go.sum ./
 RUN	go mod download
