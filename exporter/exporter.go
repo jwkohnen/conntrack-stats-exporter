@@ -24,7 +24,10 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"strings"
 	"time"
+
+	"github.com/containernetworking/plugins/pkg/utils/sysctl"
 
 	"github.com/jwkohnen/conntrack-stats-exporter/exporter/internal"
 )
@@ -114,6 +117,11 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 		return err
 	}
 
+	maxOutput, err := e.execSysctlTool(netns)
+	if err != nil {
+		return err
+	}
+
 	matches := _regex.FindAllSubmatch(statsOutput, -1)
 
 	if len(matches) == 0 {
@@ -171,6 +179,16 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 			},
 		},
 		countOutput,
+	)
+
+	metrics.GetOrInit(e.cfg.prefix, "gauge", "max").AddSample(
+		internal.Labels{
+			internal.Label{
+				Key:   "netns",
+				Value: netns,
+			},
+		},
+		maxOutput,
 	)
 
 	return nil
@@ -237,6 +255,40 @@ func (e *exporter) execConntrackTool(
 	return statsOutput, countOutput, nil
 }
 
+func (e *exporter) execSysctlTool(
+	netns string,
+) (
+	maxOutput string,
+	err error,
+) {
+	for _, fn := range []func() error{
+		func() error {
+			var err error
+
+			maxOutput, err = getConntrackMax()
+			return err
+		},
+	} {
+		var errExec error
+
+		errNs := e.execInNetns(netns, func() { errExec = fn() })
+
+		if errNs != nil {
+			return "", fmt.Errorf("error executing in netns %q: %w", netns, errNs)
+		}
+
+		if errExec != nil {
+			return "", e.scrapeErrors.Count(
+				netns,
+				internal.OpExecTool,
+				fmt.Errorf("failed to exec conntrack tool: %w", errExec),
+			)
+		}
+	}
+
+	return maxOutput, nil
+}
+
 func getConntrackCounter(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "conntrack", "--count")
 
@@ -246,6 +298,15 @@ func getConntrackCounter(ctx context.Context) (string, error) {
 	}
 
 	return string(bytes.TrimSpace(out)), nil
+}
+
+func getConntrackMax() (string, error) {
+	out, err := sysctl.Sysctl("net.netfilter.nf_conntrack_max")
+	if err != nil {
+		return "", fmt.Errorf("error getting the value for net.netfilter.nf_conntrack_max: %w", err)
+	}
+
+	return strings.TrimSpace(out), nil
 }
 
 func getConntrackStats(ctx context.Context) ([]byte, error) {

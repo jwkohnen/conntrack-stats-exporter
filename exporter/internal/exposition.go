@@ -186,6 +186,7 @@ var _help = map[string]string{
 	"search_restart": "Total of conntrack search_restart",
 	"count":          "Total of conntrack count",
 	"scrape_error":   "Total of error when calling/parsing conntrack command",
+	"max":            "Maximum of conntrack count",
 }
 
 type countWriter struct {
