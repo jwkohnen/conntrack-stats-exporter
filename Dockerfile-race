@@ -8,8 +8,8 @@ RUN	go mod verify
 RUN	go test --race ./...
 RUN	go build --race -o conntrack-stats-exporter
 
-FROM	debian:stable-slim
+FROM	debian:trixie-slim
 RUN	apt-get update
-RUN	apt-get -qy install conntrack iproute2
+RUN	apt-get -qy --no-install-recommends install conntrack iproute2
 COPY	--from=build /conntrack-stats-exporter/conntrack-stats-exporter /usr/local/sbin/
 ENTRYPOINT	[ "/usr/local/sbin/conntrack-stats-exporter" ]
