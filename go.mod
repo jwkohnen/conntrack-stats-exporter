@@ -1,6 +1,6 @@
 module github.com/jwkohnen/conntrack-stats-exporter
 
-go 1.18
+go 1.19
 
 require github.com/vishvananda/netns v0.0.4
 
