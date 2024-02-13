@@ -257,6 +257,7 @@ func TestScrapeError(t *testing.T) {
 				defer wg.Done()
 
 				start := time.Now()
+
 				resp, err := client.Do(req)
 				if err != nil {
 					t.Error(err)
@@ -287,9 +288,11 @@ func TestScrapeError(t *testing.T) {
 		timings := make([]time.Duration, concurrency)
 
 		wg := new(sync.WaitGroup)
-		wg.Add(concurrency)
+
 		for i := 0; i < concurrency; i++ {
 			i := i
+
+			wg.Add(1)
 
 			go func() {
 				defer wg.Done()
@@ -333,6 +336,7 @@ func TestScrapeError(t *testing.T) {
 					defer wg.Done()
 
 					start := time.Now()
+
 					resp, err := client.Do(req)
 					if err != nil {
 						t.Error(err)
