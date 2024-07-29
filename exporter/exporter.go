@@ -121,7 +121,7 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 	}
 
 	for _, match := range matches {
-		var cpu string
+		var cpu []byte
 
 		for i, metricShortName := range _regex.SubexpNames() {
 			value := match[i]
@@ -136,13 +136,21 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 				// skip full match
 				continue
 			case "cpu":
-				cpu = string(value)
+				cpu = value
 			default:
+				if len(cpu) == 0 {
+					return e.scrapeErrors.Count(
+						netns,
+						internal.OpToolOutputNoMatch,
+						fmt.Errorf("no cpu value for: %q", metricShortName),
+					)
+				}
+
 				metrics.GetOrInit(e.cfg.prefix, "counter", metricShortName).AddSample(
 					internal.Labels{
 						{
 							Key:   "cpu",
-							Value: cpu,
+							Value: string(cpu),
 						},
 						{
 							Key:   "netns",
