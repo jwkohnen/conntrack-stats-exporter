@@ -148,11 +148,11 @@ func (e *exporter) gatherMetricsForNetNs(ctx context.Context, netns string, metr
 
 				metrics.GetOrInit(e.cfg.prefix, "counter", metricShortName).AddSample(
 					internal.Labels{
-						{
+						internal.Label{
 							Key:   "cpu",
 							Value: string(cpu),
 						},
-						{
+						internal.Label{
 							Key:   "netns",
 							Value: netns,
 						},

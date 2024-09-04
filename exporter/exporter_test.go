@@ -277,6 +277,7 @@ func TestScrapeError(t *testing.T) {
 				timings[i] = time.Since(start)
 			}()
 		}
+
 		wg.Wait()
 
 		t.Logf("timing median: %v", median(timings))
@@ -311,6 +312,7 @@ func TestScrapeError(t *testing.T) {
 				timings[i] = time.Since(start)
 			}()
 		}
+
 		wg.Wait()
 
 		t.Logf("timing median: %v", median(timings))
@@ -356,6 +358,7 @@ func TestScrapeError(t *testing.T) {
 					timings[i] = time.Since(start)
 				}()
 			}
+
 			wg.Wait()
 
 			t.Logf("timing median: %v", median(timings))

@@ -5,7 +5,7 @@ linters:
     - dogsled
     - dupl
     - errcheck
-    - exportloopref
+    # - copyloopvar
     - funlen
     - gochecknoinits
     - goconst
@@ -40,7 +40,7 @@ linters:
     - testpackage
     - revive
     - wsl
-    - gomnd
+    - mnd
 
 linters-settings:
   lll:
@@ -50,7 +50,7 @@ linters-settings:
     statements: 50
   goimports:
     local-prefixes: github.com/jwkohnen/conntrack-stats-exporter
-  gomnd:
+  mnd:
     ignored-numbers:
       - '0'
       - '1'
