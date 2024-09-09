@@ -6,7 +6,7 @@ COPY	. .
 RUN	go mod verify
 RUN	./build.sh
 
-FROM	alpine:3.20.2
+FROM	alpine:3.20.3
 COPY	--from=build /conntrack-stats-exporter/conntrack-stats-exporter /usr/local/sbin/
 RUN	apk update && \
 	apk --no-cache upgrade && \
