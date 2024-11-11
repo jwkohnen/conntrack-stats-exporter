@@ -4,4 +4,4 @@ go 1.22
 
 require github.com/vishvananda/netns v0.0.5
 
-require golang.org/x/sys v0.19.0 // indirect
+require golang.org/x/sys v0.27.0 // indirect
