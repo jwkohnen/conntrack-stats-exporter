@@ -213,7 +213,7 @@ func TestIssue19(t *testing.T) {
 }
 
 // TestScrapeError tests that the exporter counts scrape errors correctly. Also, it runs a bunch of requests in parallel
-// in order to provoke the race detector.
+// to provoke the race detector.
 //
 //nolint:funlen
 func TestScrapeError(t *testing.T) {
