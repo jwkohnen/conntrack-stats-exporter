@@ -18,6 +18,7 @@ package internal
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -73,6 +74,8 @@ func (s *ScrapeErrors) Samples() Samples {
 			)
 		}
 	}
+
+	sort.Sort(samples)
 
 	return samples
 }
