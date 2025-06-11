@@ -58,6 +58,13 @@ func (s Samples) Less(i, j int) bool {
 		if ki != kj {
 			return ki < kj
 		}
+
+		vi := s[i].Labels[l].Value
+		vj := s[j].Labels[l].Value
+
+		if vi != vj {
+			return vi < vj
+		}
 	}
 
 	return s[i].Value < s[j].Value
