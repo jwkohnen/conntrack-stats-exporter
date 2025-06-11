@@ -46,6 +46,7 @@ func (s Samples) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s Samples) Less(i, j int) bool {
 	li := len(s[i].Labels)
 	lj := len(s[j].Labels)
+
 	if li != lj {
 		return li < lj
 	}
@@ -53,6 +54,7 @@ func (s Samples) Less(i, j int) bool {
 	for l := 0; l < li; l++ {
 		ki := s[i].Labels[l].Key
 		kj := s[j].Labels[l].Key
+
 		if ki != kj {
 			return ki < kj
 		}
