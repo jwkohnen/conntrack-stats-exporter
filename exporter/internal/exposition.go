@@ -40,6 +40,27 @@ type (
 	}
 )
 
+func (s Samples) Len() int      { return len(s) }
+func (s Samples) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+
+func (s Samples) Less(i, j int) bool {
+	li := len(s[i].Labels)
+	lj := len(s[j].Labels)
+	if li != lj {
+		return li < lj
+	}
+
+	for l := 0; l < li; l++ {
+		ki := s[i].Labels[l].Key
+		kj := s[j].Labels[l].Key
+		if ki != kj {
+			return ki < kj
+		}
+	}
+
+	return s[i].Value < s[j].Value
+}
+
 func NewMetrics(fixMetricNames bool) Metrics {
 	return Metrics{
 		metrics:        make(metrics, len(_help)),
@@ -127,6 +148,8 @@ func (m *Metric) AddSample(labels Labels, value string) {
 			Value:  value,
 		},
 	)
+
+	sort.Sort(m.Samples)
 }
 
 func (m *Metric) WriteTo(w io.Writer) (n int64, err error) {
