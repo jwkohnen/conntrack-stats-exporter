@@ -41,33 +41,6 @@ type (
 	}
 )
 
-func SamplesCmp(i, j Sample) int {
-	li := len(i.Labels)
-	lj := len(j.Labels)
-
-	if x := li - lj; x != 0 {
-		return x
-	}
-
-	for l := 0; l < li; l++ {
-		ki := i.Labels[l].Key
-		kj := j.Labels[l].Key
-
-		if x := strings.Compare(ki, kj); x != 0 {
-			return x
-		}
-
-		vi := i.Labels[l].Value
-		vj := j.Labels[l].Value
-
-		if x := strings.Compare(vi, vj); x != 0 {
-			return x
-		}
-	}
-
-	return strings.Compare(i.Value, j.Value)
-}
-
 func NewMetrics(fixMetricNames bool) Metrics {
 	return Metrics{
 		metrics:        make(metrics, len(_help)),
@@ -178,6 +151,35 @@ func (ll Labels) String() string {
 
 func (l Label) String() string {
 	return l.Key + `="` + l.Value + `"`
+}
+
+func SamplesCmp(i, j Sample) int {
+	li := len(i.Labels)
+	lj := len(j.Labels)
+
+	if x := li - lj; x != 0 {
+		return x
+	}
+
+	// compare each label's key-value pair
+	for l := 0; l < li; l++ {
+		ki := i.Labels[l].Key
+		kj := j.Labels[l].Key
+
+		if x := strings.Compare(ki, kj); x != 0 {
+			return x
+		}
+
+		vi := i.Labels[l].Value
+		vj := j.Labels[l].Value
+
+		if x := strings.Compare(vi, vj); x != 0 {
+			return x
+		}
+	}
+
+	// compare sample value -- this code path should be unreachable, but who knows?
+	return strings.Compare(i.Value, j.Value)
 }
 
 // TODO(jwkohnen): improve help texts!
