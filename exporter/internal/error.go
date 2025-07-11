@@ -18,7 +18,7 @@ package internal
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"sync"
 )
@@ -75,7 +75,7 @@ func (s *ScrapeErrors) Samples() Samples {
 		}
 	}
 
-	sort.Sort(samples)
+	slices.SortFunc(samples, SamplesCmp)
 
 	return samples
 }

@@ -3,6 +3,7 @@ package internal
 import (
 	_ "embed"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -40,34 +41,31 @@ type (
 	}
 )
 
-func (s Samples) Len() int      { return len(s) }
-func (s Samples) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func SamplesCmp(i, j Sample) int {
+	li := len(i.Labels)
+	lj := len(j.Labels)
 
-func (s Samples) Less(i, j int) bool {
-	li := len(s[i].Labels)
-	lj := len(s[j].Labels)
-
-	if li != lj {
-		return li < lj
+	if x := li - lj; x != 0 {
+		return x
 	}
 
 	for l := 0; l < li; l++ {
-		ki := s[i].Labels[l].Key
-		kj := s[j].Labels[l].Key
+		ki := i.Labels[l].Key
+		kj := j.Labels[l].Key
 
-		if ki != kj {
-			return ki < kj
+		if x := strings.Compare(ki, kj); x != 0 {
+			return x
 		}
 
-		vi := s[i].Labels[l].Value
-		vj := s[j].Labels[l].Value
+		vi := i.Labels[l].Value
+		vj := j.Labels[l].Value
 
-		if vi != vj {
-			return vi < vj
+		if x := strings.Compare(vi, vj); x != 0 {
+			return x
 		}
 	}
 
-	return s[i].Value < s[j].Value
+	return strings.Compare(i.Value, j.Value)
 }
 
 func NewMetrics(fixMetricNames bool) Metrics {
@@ -158,7 +156,8 @@ func (m *Metric) AddSample(labels Labels, value string) {
 		},
 	)
 
-	sort.Sort(m.Samples)
+	// TODO: this is doing nothing
+	slices.SortFunc(m.Samples, SamplesCmp)
 }
 
 func (m *Metric) WriteTo(w io.Writer) (n int64, err error) {
