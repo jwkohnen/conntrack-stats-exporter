@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"cmp"
 	_ "embed"
 	"io"
 	"slices"
@@ -154,32 +155,22 @@ func (l Label) String() string {
 }
 
 func SamplesCmp(i, j Sample) int {
-	li := len(i.Labels)
-	lj := len(j.Labels)
+	return cmp.Or(
+		cmp.Compare(len(i.Labels), len(j.Labels)),
+		func() int {
+			for li := range i.Labels {
+				if x := cmp.Or(
+					strings.Compare(i.Labels[li].Key, j.Labels[li].Key),
+					strings.Compare(i.Labels[li].Value, j.Labels[li].Value),
+				); x != 0 {
+					return x
+				}
+			}
 
-	if x := li - lj; x != 0 {
-		return x
-	}
-
-	// compare each label's key-value pair
-	for l := 0; l < li; l++ {
-		ki := i.Labels[l].Key
-		kj := j.Labels[l].Key
-
-		if x := strings.Compare(ki, kj); x != 0 {
-			return x
-		}
-
-		vi := i.Labels[l].Value
-		vj := j.Labels[l].Value
-
-		if x := strings.Compare(vi, vj); x != 0 {
-			return x
-		}
-	}
-
-	// compare sample value -- this code path should be unreachable, but who knows?
-	return strings.Compare(i.Value, j.Value)
+			return 0
+		}(),
+		cmp.Compare(i.Value, j.Value),
+	)
 }
 
 // TODO(jwkohnen): improve help texts!
