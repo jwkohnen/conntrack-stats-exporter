@@ -32,4 +32,4 @@ else
     go test --race -v ./...
 fi
 
-CGO_ENABLED=0 go build --ldflags="-X pkg.version=$(git describe --dirty)"
+CGO_ENABLED=0 go build
