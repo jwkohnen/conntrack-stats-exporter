@@ -48,6 +48,11 @@ func main() {
 
 	cfg, opts := configure()
 
+	const procPath = "/proc/net/stat/nf_conntrack"
+	if !cfg.quiet && checkProc(procPath) {
+		cfg.logf("HINT: the file %q is available, you may use prometheus/node_exporter instead.", procPath)
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle(cfg.path, newAbortHandler(exporter.Handler(opts...)))
 

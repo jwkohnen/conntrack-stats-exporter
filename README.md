@@ -12,6 +12,14 @@ Kubernetes clusters and causes drop of initial packets of NATted connections
 (both UDP, TCP.) The `insert_failed` statistic correlates with dropped
 connections due to this bug.
 
+# Prometheus Node Exporter
+
+Since quite a while now Linux does export conntrack stats via the procfs and
+also Prometheus Mode Exporter exports them if available.
+
+This Exporter will emit an log line at start up if the procfs makes the stats
+available.
+
 # Helm Chart
 
 See [Prometheus Community Charts](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-conntrack-stats-exporter).
