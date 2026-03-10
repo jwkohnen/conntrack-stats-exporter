@@ -34,6 +34,7 @@ func newAbortHandler(next http.Handler) http.Handler {
 					abort(err)
 				}
 			}()
+
 			next.ServeHTTP(w, r)
 		},
 	)
@@ -49,7 +50,7 @@ func newAbortHandler(next http.Handler) http.Handler {
 //
 // pod.spec.containers.terminationMessagePolicy should be set to
 // FallbackToLogsOnError.
-func abort(err interface{}) {
+func abort(err any) {
 	const size = 2 << 10
 
 	buf := bytes.NewBuffer(make([]byte, 0, 2*size))

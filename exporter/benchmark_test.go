@@ -12,7 +12,7 @@ func BenchmarkHandler(b *testing.B) {
 	mockConntrackTool(b)
 
 	var (
-		r = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		r = httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/", http.NoBody)
 		w nullResponseWriter
 	)
 
@@ -28,7 +28,7 @@ func BenchmarkServeHTTP(b *testing.B) {
 
 	var (
 		h = exporter.Handler()
-		r = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		r = httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/", http.NoBody)
 		w nullResponseWriter
 	)
 

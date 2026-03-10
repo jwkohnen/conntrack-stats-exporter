@@ -189,19 +189,20 @@ func (e *exporter) execConntrackTool(
 			var err error
 
 			statsOutput, err = getConntrackStats(ctx)
+
 			return err
 		},
 		func() error {
 			var err error
 
 			countOutput, err = getConntrackCounter(ctx)
+
 			return err
 		},
 	} {
 		var errExec error
 
 		errNs := e.execInNetns(netns, func() { errExec = fn() })
-
 		if errNs != nil {
 			return nil, "", fmt.Errorf("error executing in netns %q: %w", netns, errNs)
 		}

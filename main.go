@@ -70,11 +70,7 @@ func main() {
 		wg             sync.WaitGroup
 	)
 
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		// Sadly Kubernetes sends SIGTERM, not SIGINT.  CTRL+C on a TTY sends SIGINT.
 		signal.Notify(shutdown, os.Interrupt)
 		signal.Notify(shutdown, syscall.SIGTERM)
@@ -89,7 +85,7 @@ func main() {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			abort(fmt.Errorf("error shutting down server: %w", err))
 		}
-	}()
+	})
 
 	cfg.logf("listening on %s with endpoint %q\n", cfg.addr, cfg.path)
 

@@ -29,7 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -42,7 +42,7 @@ import (
 func TestConntrackMock(t *testing.T) {
 	mockConntrackTool(t)
 
-	out, err := exec.Command("conntrack", "--version").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "conntrack", "--version").CombinedOutput()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestPromtoolCheckMetrics(t *testing.T) {
 	var (
 		handler  = exporter.Handler(exporter.WithFixMetricNames())
 		recorder = httptest.NewRecorder()
-		request  = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		request  = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
 	)
 
 	handler.ServeHTTP(recorder, request)
@@ -74,7 +74,7 @@ func TestPromtoolCheckMetrics(t *testing.T) {
 		t.Fatal("empty response body")
 	}
 
-	cmd := exec.Command(promtool, "check", "metrics")
+	cmd := exec.CommandContext(t.Context(), promtool, "check", "metrics")
 	cmd.Stdin = bytes.NewReader(body)
 
 	out, err := cmd.CombinedOutput()
@@ -90,7 +90,7 @@ func TestPromtoolCheckMetrics(t *testing.T) {
 
 func testMetrics(t *testing.T, want map[string][]int) {
 	recorder := httptest.NewRecorder()
-	exporter.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	exporter.Handler().ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody))
 
 	resp := recorder.Result()
 
@@ -108,8 +108,6 @@ func testMetrics(t *testing.T, want map[string][]int) {
 	}
 
 	for metricName, cpuValues := range want {
-		metricName, cpuValues := metricName, cpuValues
-
 		t.Run("Header+Type+Metric: "+metricName, func(t *testing.T) {
 			// Apologies for using regex! As a reminder (?m) enables multi-line mode.  This regex is supposed to make
 			// sure the metric is prepended by a HELP as well as a TYPE header and that each type is `counter`.
@@ -128,8 +126,6 @@ func testMetrics(t *testing.T, want map[string][]int) {
 		})
 
 		for cpu, cpuValue := range cpuValues {
-			cpu, cpuValue := cpu, cpuValue
-
 			t.Run(fmt.Sprintf("%s{cpu=%d}", metricName, cpu), func(t *testing.T) {
 				// Again, apologies for using regex.  This regex is supposed to match the metric line for a given CPU
 				// and its value.  The group should match a metric with only cpu label, any label prepending the cpu
@@ -236,7 +232,7 @@ func TestScrapeError(t *testing.T) {
 
 	t.Cleanup(srv.Close)
 
-	request, err := http.NewRequest(http.MethodGet, srv.URL, http.NoBody)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, http.NoBody)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,8 +245,7 @@ func TestScrapeError(t *testing.T) {
 		wg := new(sync.WaitGroup)
 		wg.Add(concurrency)
 
-		for i := 0; i < concurrency; i++ {
-			i := i
+		for i := range concurrency {
 			req := request.WithContext(context.Background())
 
 			go func() {
@@ -290,14 +285,8 @@ func TestScrapeError(t *testing.T) {
 
 		wg := new(sync.WaitGroup)
 
-		for i := 0; i < concurrency; i++ {
-			i := i
-
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-
+		for i := range concurrency {
+			wg.Go(func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 				defer cancel()
 
@@ -310,7 +299,7 @@ func TestScrapeError(t *testing.T) {
 				}
 
 				timings[i] = time.Since(start)
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -319,8 +308,6 @@ func TestScrapeError(t *testing.T) {
 	})
 
 	for _, code := range []string{"0", "1"} {
-		code := code
-
 		t.Run("broken tool code "+code, func(t *testing.T) {
 			t.Setenv("CONNTRACK_STATS_EXPORTER_KAPUTT", "true")
 			t.Setenv("CONNTRACK_STATS_EXPORTER_EXIT_CODE", code)
@@ -330,8 +317,7 @@ func TestScrapeError(t *testing.T) {
 			wg := new(sync.WaitGroup)
 			wg.Add(concurrency)
 
-			for i := 0; i < concurrency; i++ {
-				i := i
+			for i := range concurrency {
 				req := request.WithContext(context.Background())
 
 				go func() {
@@ -458,7 +444,7 @@ func TestUndefinedNetns(t *testing.T) {
 	var (
 		errorLogBuf = new(bytes.Buffer)
 
-		request = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
 		handler = exporter.Handler(
 			exporter.WithNetNs([]string{"this-ns-does-not-exist"}),
 			exporter.WithErrorLogger(logger(errorLogBuf)),
@@ -533,7 +519,7 @@ func logger(w io.Writer) func(string, ...any) {
 }
 
 func median(timings []time.Duration) time.Duration {
-	sort.Slice(timings, func(i, j int) bool { return timings[i] < timings[j] })
+	slices.Sort(timings)
 	return timings[len(timings)/2]
 }
 
