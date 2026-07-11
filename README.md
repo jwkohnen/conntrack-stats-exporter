@@ -2,8 +2,8 @@
 
 NOTE: THIS PROJECT IS DEPRECATED AND IN MAINTENANCE MODE!
 
-Since quite a while now the Linux kernel does export conntrack stats via the procfs and
-also Prometheus Mode Exporter exports them if available.
+Since quite a while now the Linux kernel does export conntrack stats via the
+procfs and also Prometheus Mode Exporter exports them if available.
 
 This Exporter will emit an log line at start up if the procfs makes the stats
 available.
