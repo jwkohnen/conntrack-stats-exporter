@@ -1,9 +1,20 @@
-# Conntrack Statistics Exporter
+# Prometheus Node Exporter
 
-The well known prometheus node exporter exports conntrack metrics off the /proc
-pseudo file system. The conntrack module developers consider that surface as
-deprecated and provide a CLI tool `conntrack` that shows some interesting
-metrics.
+NOTE: THIS PROJECT IS DEPRECATED AND IN MAINTENANCE MODE!
+
+Since quite a while now the Linux kernel does export conntrack stats via the procfs and
+also Prometheus Mode Exporter exports them if available.
+
+This Exporter will emit an log line at start up if the procfs makes the stats
+available.
+
+I will keep updating the container images to fix security bugs (or rather: to
+make security scanners happy,) but you should probably migrate to the
+prometheus node exporter.  If you miss a conntrack related metric in the node
+exporter, chances are that the prometheus folks do export it already, but chose
+a funny name, e.g. conntrack_max -> conntrack_entries_limit.
+
+# Conntrack Statistics Exporter
 
 Motivation for this exporter was to survey `insert_failed` statistics due to a
 race condition in the Linux ipfilter conntrack kernel code. This is a subtle
@@ -11,14 +22,6 @@ bug that in some circumstances escalates in high workload scenarios in
 Kubernetes clusters and causes drop of initial packets of NATted connections
 (both UDP, TCP.) The `insert_failed` statistic correlates with dropped
 connections due to this bug.
-
-# Prometheus Node Exporter
-
-Since quite a while now Linux does export conntrack stats via the procfs and
-also Prometheus Mode Exporter exports them if available.
-
-This Exporter will emit an log line at start up if the procfs makes the stats
-available.
 
 # Helm Chart
 
