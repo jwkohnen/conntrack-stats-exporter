@@ -3,6 +3,7 @@ version: 2
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
+    workflow_dispatch:
     schedule:
       interval: "weekly"
       time: "09:00"
@@ -10,6 +11,7 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/"
+    workflow_dispatch:
     schedule:
       interval: "weekly"
       time: "09:00"
@@ -17,6 +19,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    workflow_dispatch:
     schedule:
       interval: "weekly"
       time: "09:00"
