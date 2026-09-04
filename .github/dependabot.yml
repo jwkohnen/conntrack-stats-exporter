@@ -4,20 +4,20 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "weekly"
-      time: "09:00"
+      interval: "daily"
+      time: "12:00"
       timezone: "Europe/Berlin"
 
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "weekly"
-      time: "09:00"
+      interval: "daily"
+      time: "12:00"
       timezone: "Europe/Berlin"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      time: "09:00"
+      interval: "daily"
+      time: "12:00"
       timezone: "Europe/Berlin"
