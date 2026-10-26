@@ -1,4 +1,4 @@
-FROM	golang:1.27.2 AS build
+FROM	golang:1.27.3 AS build
 WORKDIR	/conntrack-stats-exporter
 COPY	go.mod go.sum ./
 RUN	go mod download
@@ -6,7 +6,7 @@ COPY	. .
 RUN	go mod verify
 RUN	./build.sh
 
-FROM	alpine:3.24.2
+FROM	alpine:3.24.3
 COPY	--from=build /conntrack-stats-exporter/conntrack-stats-exporter /usr/local/sbin/
 RUN	apk update && \
 	apk --no-cache upgrade && \
