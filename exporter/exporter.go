@@ -242,7 +242,7 @@ func getConntrackCounter(ctx context.Context) (string, error) {
 
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("error running the conntrack command with the --count flag: %w", err)
+		return "", fmt.Errorf("error running the conntrack command with the --count flag: %w", withStderr(err))
 	}
 
 	return string(bytes.TrimSpace(out)), nil
@@ -253,10 +253,22 @@ func getConntrackStats(ctx context.Context) ([]byte, error) {
 
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("error running the conntrack command with the --stats flag: %w", err)
+		return nil, fmt.Errorf("error running the conntrack command with the --stats flag: %w", withStderr(err))
 	}
 
 	return output, nil
+}
+
+func withStderr(err error) error {
+	var exitErr *exec.ExitError
+
+	if errors.As(err, &exitErr) {
+		if stderr := bytes.TrimSpace(exitErr.Stderr); len(stderr) > 0 {
+			return fmt.Errorf("%w: %s", err, stderr)
+		}
+	}
+
+	return err
 }
 
 var _regex = regexp.MustCompile(`` +
