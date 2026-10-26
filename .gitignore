@@ -1,3 +1,4 @@
 /conntrack-stats-exporter
 /.idea
 vendor/
+result
