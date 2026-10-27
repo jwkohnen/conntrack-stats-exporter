@@ -1,7 +1,7 @@
 {
   description = "conntrack-stats-exporter, packaged as a minimal OCI image";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =
     { self, nixpkgs }:
@@ -21,7 +21,9 @@
 
           inherit (pkgs) lib;
 
-          conntrack-stats-exporter = pkgs.buildGoModule {
+          # nixos-26.05 defaults to Go 1.26, but ships Go 1.27.3 as
+          # `go_1_27`; use its matching module builder to pin the toolchain.
+          conntrack-stats-exporter = pkgs.buildGo127Module {
             pname = "conntrack-stats-exporter";
             version = "unstable-${self.shortRev or "dirty"}";
 
