@@ -1,0 +1,25 @@
+when:
+  - event: ["push", "pull_request"]
+    branch: ["main"]
+  - event: ["push"]
+    tag: ["v*"]
+  - event: ["manual"]
+
+engine: microvm
+image: nixos
+
+dependencies:
+  - nix
+
+environment:
+  NIX_CONFIG: "experimental-features = nix-command flakes"
+
+steps:
+  - name: "Run tests"
+    command: nix develop --command go test ./...
+
+  - name: "Validate flake"
+    command: nix flake check --no-build
+
+  - name: "Build image"
+    command: nix build --no-link --print-out-paths .#image

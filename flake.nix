@@ -106,6 +106,19 @@
         }
       );
 
+      devShells = forEachSystem (
+        { system }:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [ pkgs.go_1_27 ];
+            env.CGO_ENABLED = "0";
+          };
+        }
+      );
+
       formatter = forEachSystem ({ system }: nixpkgs.legacyPackages.${system}.nixfmt);
     };
 }
